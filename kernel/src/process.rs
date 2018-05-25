@@ -9,6 +9,7 @@ use core::fmt::Write;
 use core::ptr::{read_volatile, write, write_volatile};
 use core::{mem, ptr, slice, str};
 
+use capabilities;
 use common::cells::MapCell;
 use common::math;
 use grant;
@@ -120,6 +121,25 @@ crate fn get_editable_flash_range(app_idx: usize) -> (usize, usize) {
             let start = p.flash_non_protected_start() as usize;
             let end = p.flash_end() as usize;
             (start, end)
+        }
+    }
+}
+
+/// Cause all apps to fault.
+///
+/// This will call `fault_state()` on each app, causing the app to enter
+/// the state as if it had crashed (for example with an MPU violation). If the
+/// process is configured to be restarted it will be.
+///
+/// Only callers with the `ProcessManagementCapability` can call this function.
+/// This restricts general capsules from being able to call this function, since
+/// capsules should not be able to arbitrarily restart all apps.
+pub fn hardfault_all_apps<C: capabilities::ProcessManagementCapability>(_c: &C) {
+    unsafe {
+        for p in PROCS.iter_mut() {
+            p.as_mut().map(|process| {
+                process.fault_state();
+            });
         }
     }
 }
