@@ -20,6 +20,7 @@
 use capsules::console;
 use hil;
 use kernel;
+use kernel::capabilities;
 use kernel::component::Component;
 use kernel::Grant;
 use sam4l;
@@ -42,6 +43,8 @@ impl Component for ConsoleComponent {
     type Output = &'static console::Console<'static, sam4l::usart::USART>;
 
     unsafe fn finalize(&mut self) -> Self::Output {
+        let grant_cap = create_capability!(capabilities::MemoryAllocationCapability);
+
         sam4l::usart::USART3.set_mode(sam4l::usart::UsartMode::Uart);
         let console = static_init!(
             console::Console<sam4l::usart::USART>,
@@ -50,7 +53,7 @@ impl Component for ConsoleComponent {
                 self.baud_rate,
                 &mut console::WRITE_BUF,
                 &mut console::READ_BUF,
-                Grant::create()
+                Grant::create(&grant_cap)
             )
         );
         hil::uart::UART::set_client(self.uart, console);

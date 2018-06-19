@@ -16,6 +16,7 @@
 
 use capsules;
 use kernel;
+use kernel::capabilities;
 use kernel::component::Component;
 use sam4l;
 
@@ -36,6 +37,8 @@ impl Component for UsbComponent {
     type Output = &'static UsbDevice;
 
     unsafe fn finalize(&mut self) -> Self::Output {
+        let grant_cap = create_capability!(capabilities::MemoryAllocationCapability);
+
         // Configure the USB controller
         let usb_client = static_init!(
             capsules::usbc_client::Client<'static, sam4l::usbc::Usbc<'static>>,
@@ -49,7 +52,10 @@ impl Component for UsbComponent {
                 'static,
                 capsules::usbc_client::Client<'static, sam4l::usbc::Usbc<'static>>,
             >,
-            capsules::usb_user::UsbSyscallDriver::new(usb_client, kernel::Grant::create())
+            capsules::usb_user::UsbSyscallDriver::new(
+                usb_client,
+                kernel::Grant::create(&grant_cap)
+            )
         );
 
         usb_driver

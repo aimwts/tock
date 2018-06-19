@@ -26,6 +26,7 @@ use capsules::isl29035::Isl29035;
 use capsules::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use capsules::virtual_i2c::{I2CDevice, MuxI2C};
 use hil;
+use kernel::capabilities;
 use kernel::component::Component;
 use kernel::Grant;
 use sam4l;
@@ -95,6 +96,8 @@ impl Component for AmbientLightComponent {
     type Output = &'static AmbientLight<'static>;
 
     unsafe fn finalize(&mut self) -> Self::Output {
+        let grant_cap = create_capability!(capabilities::MemoryAllocationCapability);
+
         let isl29035_i2c = static_init!(I2CDevice, I2CDevice::new(self.i2c_mux, 0x44));
         let isl29035_virtual_alarm = static_init!(
             VirtualMuxAlarm<'static, sam4l::ast::Ast>,
@@ -108,7 +111,7 @@ impl Component for AmbientLightComponent {
         isl29035_virtual_alarm.set_client(isl29035);
         let ambient_light = static_init!(
             AmbientLight<'static>,
-            AmbientLight::new(isl29035, Grant::create())
+            AmbientLight::new(isl29035, Grant::create(&grant_cap))
         );
         hil::sensors::AmbientLight::set_client(isl29035, ambient_light);
         ambient_light
