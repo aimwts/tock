@@ -23,6 +23,7 @@ use usbc;
 pub struct Sam4l {
     pub mpu: cortexm4::mpu::MPU,
     pub systick: cortexm4::systick::SysTick,
+    pub syscall: cortexm4::syscall::SysCall,
 }
 
 impl Sam4l {
@@ -62,6 +63,7 @@ impl Sam4l {
         Sam4l {
             mpu: cortexm4::mpu::MPU::new(),
             systick: cortexm4::systick::SysTick::new(),
+            syscall: cortexm4::syscall::SysCall::new(),
         }
     }
 }
@@ -69,6 +71,7 @@ impl Sam4l {
 impl Chip for Sam4l {
     type MPU = cortexm4::mpu::MPU;
     type SysTick = cortexm4::systick::SysTick;
+    type SysCall = cortexm4::syscall::SysCall;
 
     fn service_pending_interrupts(&mut self) {
         unsafe {
@@ -159,6 +162,10 @@ impl Chip for Sam4l {
 
     fn systick(&self) -> &cortexm4::systick::SysTick {
         &self.systick
+    }
+
+    fn syscall(&self) -> &cortexm4::syscall::SysCall {
+        &self.syscall
     }
 
     fn sleep(&self) {

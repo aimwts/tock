@@ -20,17 +20,6 @@ use tbfheader;
 /// This is used in the hardfault handler.
 #[no_mangle]
 #[used]
-pub static mut SYSCALL_FIRED: usize = 0;
-
-/// This is used in the hardfault handler.
-#[no_mangle]
-#[used]
-pub static mut APP_FAULT: usize = 0;
-
-/// This is used in the hardfault handler.
-#[allow(private_no_mangle_statics)]
-#[no_mangle]
-#[used]
 static mut SCB_REGISTERS: [u32; 5] = [0; 5];
 
 #[allow(improper_ctypes)]
@@ -328,7 +317,6 @@ impl Process<'a> {
     }
 
     crate unsafe fn fault_state(&self) {
-        write_volatile(&mut APP_FAULT, 0);
         self.state.set(State::Fault);
 
         match self.fault_response {
@@ -853,17 +841,8 @@ impl Process<'a> {
         });
     }
 
-    crate unsafe fn app_fault(&self) -> bool {
-        read_volatile(&APP_FAULT) != 0
-    }
-
-    crate unsafe fn syscall_fired(&self) -> bool {
-        read_volatile(&SYSCALL_FIRED) != 0
-    }
-
     /// Context switch to the process.
     crate unsafe fn switch_to(&self) {
-        write_volatile(&mut SYSCALL_FIRED, 0);
         let psp = switch_to_user(
             self.current_stack_pointer.get(),
             &*(&self.stored_regs as *const StoredRegs as *const [usize; 8]),
@@ -876,32 +855,15 @@ impl Process<'a> {
         });
     }
 
-    crate fn svc_number(&self) -> Option<Syscall> {
-        let psp = self.current_stack_pointer.get() as *const *const u16;
-        unsafe {
-            let pcptr = read_volatile((psp as *const *const u16).offset(6));
-            let svc_instr = read_volatile(pcptr.offset(-1));
-            let svc_num = (svc_instr & 0xff) as u8;
-            match svc_num {
-                0 => Some(Syscall::YIELD),
-                1 => Some(Syscall::SUBSCRIBE),
-                2 => Some(Syscall::COMMAND),
-                3 => Some(Syscall::ALLOW),
-                4 => Some(Syscall::MEMOP),
-                _ => None,
-            }
-        }
-    }
-
-    crate fn incr_syscall_count(&self) {
+    crate fn incr_syscall_count(&self, last_syscall: Option<Syscall>) {
         self.debug.map(|debug| {
             debug.syscall_count += 1;
-            debug.last_syscall = self.svc_number();
+            debug.last_syscall = last_syscall;
         });
     }
 
-    crate fn sp(&self) -> usize {
-        self.current_stack_pointer.get() as usize
+    pub fn sp(&self) -> *const usize {
+        self.current_stack_pointer.get() as *const usize
     }
 
     crate fn lr(&self) -> usize {
@@ -912,36 +874,6 @@ impl Process<'a> {
     crate fn pc(&self) -> usize {
         let pspr = self.current_stack_pointer.get() as *const usize;
         unsafe { read_volatile(pspr.offset(6)) }
-    }
-
-    crate fn r0(&self) -> usize {
-        let pspr = self.current_stack_pointer.get() as *const usize;
-        unsafe { read_volatile(pspr) }
-    }
-
-    crate fn set_return_code(&self, return_code: ReturnCode) {
-        let r: isize = return_code.into();
-        self.set_r0(r);
-    }
-
-    crate fn set_r0(&self, val: isize) {
-        let pspr = self.current_stack_pointer.get() as *mut isize;
-        unsafe { write_volatile(pspr, val) }
-    }
-
-    crate fn r1(&self) -> usize {
-        let pspr = self.current_stack_pointer.get() as *const usize;
-        unsafe { read_volatile(pspr.offset(1)) }
-    }
-
-    crate fn r2(&self) -> usize {
-        let pspr = self.current_stack_pointer.get() as *const usize;
-        unsafe { read_volatile(pspr.offset(2)) }
-    }
-
-    crate fn r3(&self) -> usize {
-        let pspr = self.current_stack_pointer.get() as *const usize;
-        unsafe { read_volatile(pspr.offset(3)) }
     }
 
     crate fn r12(&self) -> usize {
@@ -1190,12 +1122,13 @@ impl Process<'a> {
 
         // register values
         let (r0, r1, r2, r3, r12, sp, lr, pc, xpsr) = (
-            self.r0(),
-            self.r1(),
-            self.r2(),
-            self.r3(),
+            // self.r0(),
+            // self.r1(),
+            // self.r2(),
+            // self.r3(),
+            5, 6, 7, 8,
             self.r12(),
-            self.sp(),
+            self.sp() as usize,
             self.lr(),
             self.pc(),
             self.xpsr(),

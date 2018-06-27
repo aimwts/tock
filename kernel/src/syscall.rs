@@ -1,4 +1,6 @@
-//! Tock syscall number definitions.
+//! Tock syscall number definitions and arch-agnostic interface trait.
+
+use process;
 
 /// The syscall number assignments.
 #[derive(Copy, Clone, Debug)]
@@ -18,4 +20,40 @@ crate enum Syscall {
 
     /// Various memory operations.
     MEMOP = 4,
+}
+
+pub enum ContextSwitchReason {
+    Other,
+    SyscallFired,
+    Fault,
+}
+
+/// This trait must be implemented by the architecture of the chip Tock is
+/// running on. It allows the kernel to manage processes in an
+/// architecture-agnostic manner.
+pub trait SyscallInterface {
+    /// Allows the kernel to query to see why the process stopped running. This
+    /// function can only be called once to get the last state of the process
+    /// and why the process context switched back to the kernel.
+    ///
+    /// An implementor of this function is free to reset any state that was
+    /// needed to gather this information when this function is called.
+    fn get_context_switch_reason(&self) -> ContextSwitchReason;
+
+    /// Get the syscall that the process called.
+    fn get_syscall_number(&self, stack_pointer: *const usize) -> Option<Syscall>;
+
+    /// Get the four u32 values that the process can pass with the syscall.
+    fn get_syscall_data(&self, stack_pointer: *const usize) -> (usize, usize, usize, usize);
+
+    /// Set the return value the process should see when it begins executing
+    /// again after the syscall.
+    fn set_syscall_return_value(&self, stack_pointer: *const usize, return_value: isize);
+
+    /// Replace the last stack frame with the new function call. This function
+    /// is what should be executed when the process is resumed.
+    fn replace_function_call(&self, stack_pointer: *const usize, callback: process::FunctionCall);
+
+    // /// Context switch to a specific process.
+    // fn switch_to_process(&self, stack_pointer: *const u8) -> *mut u8;
 }

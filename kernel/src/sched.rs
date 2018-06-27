@@ -16,7 +16,7 @@ use platform::{Chip, Platform};
 use process;
 use process::{Process, Task};
 use returncode::ReturnCode;
-use syscall::Syscall;
+use syscall::{Syscall, SyscallInterface, ContextSwitchReason};
 
 /// The time a process is permitted to run before being pre-empted
 const KERNEL_TICK_DURATION_US: u32 = 10000;
@@ -211,23 +211,53 @@ impl Kernel {
                 }
             }
 
-            if !process.syscall_fired() {
-                break;
+            // Check why the process stopped running, and handle it correctly.
+            let process_state = chip.syscall().get_context_switch_reason();
+            match process_state {
+                ContextSwitchReason::Fault => {
+                    // Let process deal with it as appropriate.
+                    process.fault_state();
+                    continue;
+                }
+                ContextSwitchReason::SyscallFired => {
+                    // Keep running this function.
+                }
+                ContextSwitchReason::Other => {
+                    // break to handle other processes.
+                    break;
+                }
             }
 
-            // check if the app had a fault
-            if process.app_fault() {
-                // let process deal with it as appropriate
-                process.fault_state();
-                continue;
-            }
+            // // Check if the reason this process stopped executing was that it
+            // // called a syscall. If it did, then we can handle that syscall. If
+            // // it didn't then we need to service the other processes.
+            // if !chip.syscall().get_syscall_fired() {
+            //     break;
+            // }
 
-            // process had a system call, count it
-            process.incr_syscall_count();
-            match process.svc_number() {
+            // // check if the app had a fault
+            // if process.app_fault() {
+            //     // let process deal with it as appropriate
+            //     process.fault_state();
+            //     continue;
+            // }
+
+
+
+            // Get which syscall the process called.
+            let svc_number = chip.syscall().get_syscall_number(process.sp());
+
+            // Process had a system call, count it for debugging purposes.
+            process.incr_syscall_count(svc_number);
+
+            // Retrieve the four values a process can pass with a syscall. These
+            // may not all be used depending on which syscall it is.
+            let (r0, r1, r2, r3) = chip.syscall().get_syscall_data(process.sp());
+
+            match svc_number {
                 Some(Syscall::MEMOP) => {
-                    let res = memop::memop(process);
-                    process.set_return_code(res);
+                    let res = memop::memop(process, r0, r1);
+                    chip.syscall().set_syscall_return_value(process.sp(), res.into());
                 }
                 Some(Syscall::YIELD) => {
                     process.yield_state();
@@ -237,10 +267,10 @@ impl Kernel {
                     continue;
                 }
                 Some(Syscall::SUBSCRIBE) => {
-                    let driver_num = process.r0();
-                    let subdriver_num = process.r1();
-                    let callback_ptr_raw = process.r2() as *mut ();
-                    let appdata = process.r3();
+                    let driver_num = r0;
+                    let subdriver_num = r1;
+                    let callback_ptr_raw = r2 as *mut ();
+                    let appdata = r3;
 
                     let callback_ptr = NonNull::new(callback_ptr_raw);
                     let callback =
@@ -250,37 +280,37 @@ impl Kernel {
                         Some(d) => d.subscribe(subdriver_num, callback, appid),
                         None => ReturnCode::ENODEVICE,
                     });
-                    process.set_return_code(res);
+                    chip.syscall().set_syscall_return_value(process.sp(), res.into());
                 }
                 Some(Syscall::COMMAND) => {
-                    let res = platform.with_driver(process.r0(), |driver| match driver {
-                        Some(d) => d.command(process.r1(), process.r2(), process.r3(), appid),
+                    let res = platform.with_driver(r0, |driver| match driver {
+                        Some(d) => d.command(r1, r2, r3, appid),
                         None => ReturnCode::ENODEVICE,
                     });
-                    process.set_return_code(res);
+                    chip.syscall().set_syscall_return_value(process.sp(), res.into());
                 }
                 Some(Syscall::ALLOW) => {
-                    let res = platform.with_driver(process.r0(), |driver| {
+                    let res = platform.with_driver(r0, |driver| {
                         match driver {
                             Some(d) => {
-                                let start_addr = process.r2() as *mut u8;
+                                let start_addr = r2 as *mut u8;
                                 if start_addr != ptr::null_mut() {
-                                    let size = process.r3();
+                                    let size = r3;
                                     if process.in_exposed_bounds(start_addr, size) {
                                         let slice =
                                             AppSlice::new(self, start_addr as *mut u8, size, appid);
-                                        d.allow(appid, process.r1(), Some(slice))
+                                        d.allow(appid, r1, Some(slice))
                                     } else {
                                         ReturnCode::EINVAL /* memory not allocated to process */
                                     }
                                 } else {
-                                    d.allow(appid, process.r1(), None)
+                                    d.allow(appid, r1, None)
                                 }
                             }
                             None => ReturnCode::ENODEVICE,
                         }
                     });
-                    process.set_return_code(res);
+                    chip.syscall().set_syscall_return_value(process.sp(), res.into());
                 }
                 _ => {}
             }
