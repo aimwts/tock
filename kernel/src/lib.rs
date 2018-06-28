@@ -23,6 +23,7 @@ pub mod common;
 pub mod debug;
 pub mod hil;
 pub mod ipc;
+pub mod syscall;
 
 mod callback;
 mod driver;
@@ -33,7 +34,6 @@ mod platform;
 mod process;
 mod returncode;
 mod sched;
-mod syscall;
 mod tbfheader;
 
 pub use callback::{AppId, Callback};
@@ -46,14 +46,12 @@ pub use platform::{ClockInterface, NoClockControl, NO_CLOCK_CONTROL};
 pub use returncode::ReturnCode;
 pub use sched::Kernel;
 
-// These symbols must be exported for the arch crate to access them.
-pub use process::APP_FAULT;
-pub use process::SYSCALL_FIRED;
+pub use process::SCB_REGISTERS;
 
 // Export only select items from the process module. To remove the name conflict
 // this cannot be called `process`, so we use a shortened version. These
 // functions and types are used by board files to setup the platform and setup
 // processes.
 pub mod procs {
-    pub use process::{load_processes, FaultResponse, Process};
+    pub use process::{load_processes, FaultResponse, FunctionCall, Process, ProcessType};
 }
