@@ -6,7 +6,7 @@ use core::ptr::Unique;
 use core::slice;
 
 use callback::AppId;
-use process;
+use sched::Kernel;
 
 #[derive(Debug)]
 pub struct Private;
@@ -14,14 +14,16 @@ pub struct Private;
 pub struct Shared;
 
 pub struct AppPtr<L, T> {
+    kernel: &'static Kernel,
     ptr: Unique<T>,
     process: AppId,
     _phantom: PhantomData<L>,
 }
 
 impl<L, T> AppPtr<L, T> {
-    unsafe fn new(ptr: *mut T, appid: AppId) -> AppPtr<L, T> {
+    unsafe fn new(kernel: &'static Kernel, ptr: *mut T, appid: AppId) -> AppPtr<L, T> {
         AppPtr {
+            kernel: kernel,
             ptr: Unique::new_unchecked(ptr),
             process: appid,
             _phantom: PhantomData,
@@ -45,27 +47,25 @@ impl<L, T> DerefMut for AppPtr<L, T> {
 
 impl<L, T> Drop for AppPtr<L, T> {
     fn drop(&mut self) {
-        unsafe {
-            let ps = &mut process::PROCS;
-            if ps.len() > self.process.idx() {
-                ps[self.process.idx()]
-                    .as_mut()
-                    .map(|process| process.free(self.ptr.as_mut()));
-            }
-        }
+        self.kernel
+            .process_map_or((), self.process.idx(), |process| unsafe {
+                process.free(self.ptr.as_mut())
+            })
     }
 }
 
 pub struct AppSlice<L, T> {
+    kernel: &'static Kernel,
     ptr: AppPtr<L, T>,
     len: usize,
 }
 
 impl<L, T> AppSlice<L, T> {
-    crate fn new(ptr: *mut T, len: usize, appid: AppId) -> AppSlice<L, T> {
+    crate fn new(kernel: &'static Kernel, ptr: *mut T, len: usize, appid: AppId) -> AppSlice<L, T> {
         unsafe {
             AppSlice {
-                ptr: AppPtr::new(ptr, appid),
+                kernel: kernel,
+                ptr: AppPtr::new(kernel, ptr, appid),
                 len: len,
             }
         }
@@ -80,12 +80,10 @@ impl<L, T> AppSlice<L, T> {
     }
 
     crate unsafe fn expose_to(&self, appid: AppId) -> bool {
-        let ps = &mut process::PROCS;
-        if appid.idx() != self.ptr.process.idx() && ps.len() > appid.idx() {
-            ps[appid.idx()]
-                .as_ref()
-                .map(|process| process.add_mpu_region(self.ptr() as *const u8, self.len() as u32))
-                .unwrap_or(false)
+        if appid.idx() != self.ptr.process.idx() {
+            self.kernel.process_map_or(false, appid.idx(), |process| {
+                process.add_mpu_region(self.ptr() as *const u8, self.len() as u32)
+            })
         } else {
             false
         }

@@ -196,7 +196,10 @@ pub unsafe fn reset_handler() {
         ]
     );
 
+    let board_kernel = static_init!(kernel::Kernel, kernel::Kernel::new(&mut PROCESSES));
+
     nrf52dk_base::setup_board(
+        board_kernel,
         BUTTON_RST_PIN,
         gpio_pins,
         LED1_PIN,
