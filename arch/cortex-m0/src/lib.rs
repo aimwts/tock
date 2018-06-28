@@ -9,6 +9,7 @@ extern crate kernel;
 pub use cortexm::support;
 
 pub use cortexm::nvic;
+pub use cortexm::syscall;
 
 #[cfg(not(target_os = "none"))]
 pub unsafe extern "C" fn generic_isr() {}
@@ -96,7 +97,7 @@ pub unsafe extern "C" fn SVC_Handler() {
   bx r1
 
 to_kernel:
-  ldr r0, =SYSCALL_FIRED
+  ldr r0, =PROCESS_STATE
   movs r1, #1
   str r1, [r0, #0]
   ldr r1, EXC_RETURN_MSP
