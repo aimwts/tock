@@ -24,16 +24,16 @@ const KERNEL_TICK_DURATION_US: u32 = 10000;
 const MIN_QUANTA_THRESHOLD_US: u32 = 500;
 
 /// Main object for the kernel. Each board will need to create one.
-pub struct Kernel {
+pub struct Kernel<S: SyscallInterface> {
     /// How many "to-do" items exist at any given time. These include
     /// outstanding callbacks and processes in the Running state.
     work: Cell<usize>,
     /// This holds a pointer to the static array of Process pointers.
-    processes: &'static [Option<&'static mut Process<'static>>],
+    processes: &'static [Option<&'static mut Process<'static, S>>],
 }
 
-impl Kernel {
-    pub fn new(processes: &'static [Option<&'static mut Process<'static>>]) -> Kernel {
+impl<S: SyscallInterface> Kernel<S> {
+    pub fn new(processes: &'static [Option<&'static mut Process<'static, S>>]) -> Kernel {
         Kernel {
             work: Cell::new(0),
             processes: processes,
@@ -155,7 +155,7 @@ impl Kernel {
         &'static self,
         platform: &P,
         chip: &mut C,
-        process: &Process,
+        process: &Process<S>,
         appid: AppId,
         ipc: Option<&::ipc::IPC>,
     ) {
@@ -178,6 +178,10 @@ impl Kernel {
                     chip.mpu().enable_mpu();
                     systick.enable(true);
                     process.switch_to();
+
+                    let new_sp = chip.syscall().switch_to_process(process.sp(), process.stored_state());
+
+
                     systick.enable(false);
                     chip.mpu().disable_mpu();
                 }

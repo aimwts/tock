@@ -14,7 +14,7 @@ use grant;
 use platform::mpu;
 use returncode::ReturnCode;
 use sched::Kernel;
-use syscall::Syscall;
+use syscall::{Syscall, SyscallInterface};
 use tbfheader;
 
 /// This is used in the hardfault handler.
@@ -37,11 +37,11 @@ extern "C" {
 /// number of processes are created, with process structures placed in the
 /// provided array. How process faults are handled by the kernel is also
 /// selected.
-pub unsafe fn load_processes(
+pub unsafe fn load_processes<S: SyscallInterface>(
     kernel: &'static Kernel,
     start_of_flash: *const u8,
     app_memory: &mut [u8],
-    procs: &mut [Option<&mut Process<'static>>],
+    procs: &mut [Option<&mut Process<'a, S>>],
     fault_response: FaultResponse,
 ) {
     let mut apps_in_flash_ptr = start_of_flash;
@@ -125,17 +125,17 @@ crate struct FunctionCall {
     crate pc: usize,
 }
 
-#[derive(Default)]
-struct StoredRegs {
-    r4: usize,
-    r5: usize,
-    r6: usize,
-    r7: usize,
-    r8: usize,
-    r9: usize,
-    r10: usize,
-    r11: usize,
-}
+// #[derive(Default)]
+// struct StoredRegs {
+//     r4: usize,
+//     r5: usize,
+//     r6: usize,
+//     r7: usize,
+//     r8: usize,
+//     r9: usize,
+//     r10: usize,
+//     r11: usize,
+// }
 
 /// State for helping with debugging apps.
 ///
@@ -168,7 +168,7 @@ struct ProcessDebug {
     restart_count: usize,
 }
 
-pub struct Process<'a> {
+pub struct Process<'a, S: SyscallInterface> {
     /// Pointer to the main Kernel struct.
     kernel: &'static Kernel,
 
@@ -222,7 +222,7 @@ pub struct Process<'a> {
     header: tbfheader::TbfHeader,
 
     /// Saved each time the app switches to the kernel.
-    stored_regs: StoredRegs,
+    stored_regs: S::StoredState,
 
     /// The PC to jump to when switching back to the app.
     yield_pc: Cell<usize>,
@@ -260,7 +260,7 @@ pub struct Process<'a> {
     debug: MapCell<ProcessDebug>,
 }
 
-impl Process<'a> {
+impl<S: SyscallInterface> Process<'a, S> {
     crate fn schedule(&self, callback: FunctionCall) -> bool {
         // If this app is in the `Fault` state then we shouldn't schedule
         // any work for it.
@@ -560,7 +560,7 @@ impl Process<'a> {
         remaining_app_memory: *mut u8,
         remaining_app_memory_size: usize,
         fault_response: FaultResponse,
-    ) -> (Option<&'static mut Process<'a>>, usize, usize) {
+    ) -> (Option<&'static mut Process<'a, S>>, usize, usize) {
         if let Some(tbf_header) = tbfheader::parse_and_validate_tbf_header(app_flash_address) {
             let app_flash_size = tbf_header.get_total_size() as usize;
 
@@ -841,19 +841,19 @@ impl Process<'a> {
         });
     }
 
-    /// Context switch to the process.
-    crate unsafe fn switch_to(&self) {
-        let psp = switch_to_user(
-            self.current_stack_pointer.get(),
-            &*(&self.stored_regs as *const StoredRegs as *const [usize; 8]),
-        );
-        self.current_stack_pointer.set(psp);
-        self.debug.map(|debug| {
-            if self.current_stack_pointer.get() < debug.min_stack_pointer {
-                debug.min_stack_pointer = self.current_stack_pointer.get();
-            }
-        });
-    }
+    // /// Context switch to the process.
+    // crate unsafe fn switch_to(&self) {
+    //     let psp = switch_to_user(
+    //         self.current_stack_pointer.get(),
+    //         &*(&self.stored_regs as *const StoredRegs as *const [usize; 8]),
+    //     );
+    //     self.current_stack_pointer.set(psp);
+    //     self.debug.map(|debug| {
+    //         if self.current_stack_pointer.get() < debug.min_stack_pointer {
+    //             debug.min_stack_pointer = self.current_stack_pointer.get();
+    //         }
+    //     });
+    // }
 
     crate fn incr_syscall_count(&self, last_syscall: Option<Syscall>) {
         self.debug.map(|debug| {
@@ -886,7 +886,14 @@ impl Process<'a> {
         unsafe { read_volatile(pspr.offset(7)) }
     }
 
-    crate unsafe fn fault_str<W: Write>(&self, writer: &mut W) {
+    /// Return the per-process state that the kernel must store while the
+    /// process is not running. This state is passed back to the process when it
+    /// starts running.
+    pub fn stored_state(&mut self) -> &S::StoredState {
+        &mut self.stored_regs
+    }
+
+    crate unsafe fn fault_str<W: Write>(&mut self, writer: &mut W) {
         let _ccr = SCB_REGISTERS[0];
         let cfsr = SCB_REGISTERS[1];
         let hfsr = SCB_REGISTERS[2];

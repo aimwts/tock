@@ -8,6 +8,7 @@ use core::ptr::{read_volatile, write_volatile, Unique};
 use callback::AppId;
 use process::Error;
 use sched::Kernel;
+use syscall;
 
 crate static mut CONTAINER_COUNTER: usize = 0;
 
@@ -25,9 +26,9 @@ pub struct AppliedGrant<T> {
 }
 
 impl<T> AppliedGrant<T> {
-    pub fn enter<F, R>(self, fun: F) -> R
+    pub fn enter<F, R, S>(self, fun: F) -> R
     where
-        F: FnOnce(&mut Owned<T>, &mut Allocator) -> R,
+        F: FnOnce(&mut Owned<T>, &mut Allocator<S>) -> R,
         R: Copy,
     {
         let mut allocator = Allocator {
@@ -171,9 +172,9 @@ impl<T: Default> Grant<T> {
         }
     }
 
-    pub fn enter<F, R>(&self, appid: AppId, fun: F) -> Result<R, Error>
+    pub fn enter<F, R, S>(&self, appid: AppId, fun: F) -> Result<R, Error>
     where
-        F: FnOnce(&mut Borrowed<T>, &mut Allocator) -> R,
+        F: FnOnce(&mut Borrowed<T>, &mut Allocator<S>) -> R,
         R: Copy,
     {
         unsafe {

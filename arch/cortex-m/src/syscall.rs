@@ -21,6 +21,18 @@ static mut PROCESS_STATE: usize = 0;
 //     pub fn switch_to_user(user_stack: *const u8, process_regs: &mut [usize; 8]) -> *mut u8;
 // }
 
+#[derive(Default)]
+struct StoredRegs {
+    r4: usize,
+    r5: usize,
+    r6: usize,
+    r7: usize,
+    r8: usize,
+    r9: usize,
+    r10: usize,
+    r11: usize,
+}
+
 /// Constructor field is private to limit who can create a new one.
 pub struct SysCall();
 
@@ -32,6 +44,8 @@ impl SysCall {
 
 
 impl kernel::syscall::SyscallInterface for SysCall {
+    type StoredState = StoredRegs;
+
     fn get_context_switch_reason(&self) -> kernel::syscall::ContextSwitchReason {
         unsafe {
             let state = read_volatile(&PROCESS_STATE);
@@ -92,18 +106,18 @@ impl kernel::syscall::SyscallInterface for SysCall {
 
     }
 
-    // /// Context switch to a specific process.
-    // fn switch_to_process(&self, stack_pointer: *const u8) -> *mut u8 {
-    //     &mut stack_pointer
+    /// Context switch to a specific process.
+    fn switch_to_process(&self, stack_pointer: *const usize, state: &kernel::syscall::ArchStoredValue) -> *mut u8 {
+        &mut stack_pointer
 
-    //     // write_volatile(&mut SYSCALL_FIRED, 0);
-    //     switch_to_user(
-    //         stack_pointer,
-    //         &mut *(&mut self.stored_regs as *mut StoredRegs as *mut [usize; 8]),
-    //     )
-    //     // self.current_stack_pointer = psp;
-    //     // if self.current_stack_pointer < self.debug.min_stack_pointer {
-    //     //     self.debug.min_stack_pointer = self.current_stack_pointer;
-    //     // }
-    // }
+        // write_volatile(&mut SYSCALL_FIRED, 0);
+        switch_to_user(
+            stack_pointer,
+            &mut *(&mut self.stored_regs as *mut StoredRegs as *mut [usize; 8]),
+        )
+        // self.current_stack_pointer = psp;
+        // if self.current_stack_pointer < self.debug.min_stack_pointer {
+        //     self.debug.min_stack_pointer = self.current_stack_pointer;
+        // }
+    }
 }
