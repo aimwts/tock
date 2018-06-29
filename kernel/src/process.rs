@@ -851,7 +851,6 @@ impl Process<'a> {
 
     /// Context switch to the process.
     pub unsafe fn switch_to(&mut self) {
-        // write_volatile(&mut SYSCALL_FIRED, 0);
         let psp = switch_to_user(
             self.current_stack_pointer,
             &mut *(&mut self.stored_regs as *mut StoredRegs as *mut [usize; 8]),
