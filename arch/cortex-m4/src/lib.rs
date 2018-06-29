@@ -133,7 +133,7 @@ pub unsafe extern "C" fn svc_handler() {
     movt lr, #0xffff
     bx lr
   to_kernel:
-    ldr r0, =SYSCALL_FIRED
+    ldr r0, =PROCESS_STATE
     mov r1, #1
     str r1, [r0, #0]
 

@@ -287,11 +287,8 @@ unsafe extern "C" fn hard_fault_handler() {
         // hard fault occurred in an app, not the kernel. The app should be
         //  marked as in an error state and handled by the kernel
         asm!(
-            "ldr r0, =SYSCALL_FIRED
-              mov r1, #1
-              str r1, [r0, #0]
-
-              ldr r0, =APP_FAULT
+            "ldr r0, =PROCESS_STATE
+              mov r1, #2 /* Fault */
               str r1, [r0, #0]
 
               /* Read the SCB registers. */

@@ -36,10 +36,7 @@ use returncode::ReturnCode;
 ///   where the app has put the start of its heap. This is not strictly
 ///   necessary for correct operation, but allows for better debugging if the
 ///   app crashes.
-pub fn memop(process: &mut Process) -> ReturnCode {
-    let op_type = process.r0();
-    let r1 = process.r1();
-
+pub fn memop(process: &mut Process, op_type: usize, r1: usize) -> ReturnCode {
     match op_type {
         // Op Type 0: BRK
         0 /* BRK */ => {

@@ -20,12 +20,6 @@ use tbfheader;
 #[allow(private_no_mangle_statics)]
 #[no_mangle]
 #[used]
-static mut APP_FAULT: usize = 0;
-
-/// This is used in the hardfault handler.
-#[allow(private_no_mangle_statics)]
-#[no_mangle]
-#[used]
 static mut SCB_REGISTERS: [u32; 5] = [0; 5];
 
 #[allow(improper_ctypes)]
@@ -349,7 +343,7 @@ impl Process<'a> {
     }
 
     pub unsafe fn fault_state(&mut self) {
-        write_volatile(&mut APP_FAULT, 0);
+        // write_volatile(&mut APP_FAULT, 0);
         self.state = State::Fault;
 
         match self.fault_response {
@@ -855,10 +849,6 @@ impl Process<'a> {
         }
     }
 
-    pub unsafe fn app_fault(&self) -> bool {
-        read_volatile(&APP_FAULT) != 0
-    }
-
     /// Context switch to the process.
     pub unsafe fn switch_to(&mut self) {
         // write_volatile(&mut SYSCALL_FIRED, 0);
@@ -872,32 +862,32 @@ impl Process<'a> {
         }
     }
 
-    pub fn svc_number(&self) -> Option<Syscall> {
-        let psp = self.current_stack_pointer as *const *const u16;
-        unsafe {
-            let pcptr = read_volatile((psp as *const *const u16).offset(6));
-            let svc_instr = read_volatile(pcptr.offset(-1));
-            let svc_num = (svc_instr & 0xff) as u8;
-            match svc_num {
-                0 => Some(Syscall::YIELD),
-                1 => Some(Syscall::SUBSCRIBE),
-                2 => Some(Syscall::COMMAND),
-                3 => Some(Syscall::ALLOW),
-                4 => Some(Syscall::MEMOP),
-                _ => None,
-            }
-        }
-    }
+    // pub fn svc_number(&self) -> Option<Syscall> {
+    //     let psp = self.current_stack_pointer as *const *const u16;
+    //     unsafe {
+    //         let pcptr = read_volatile((psp as *const *const u16).offset(6));
+    //         let svc_instr = read_volatile(pcptr.offset(-1));
+    //         let svc_num = (svc_instr & 0xff) as u8;
+    //         match svc_num {
+    //             0 => Some(Syscall::YIELD),
+    //             1 => Some(Syscall::SUBSCRIBE),
+    //             2 => Some(Syscall::COMMAND),
+    //             3 => Some(Syscall::ALLOW),
+    //             4 => Some(Syscall::MEMOP),
+    //             _ => None,
+    //         }
+    //     }
+    // }
 
-    pub fn incr_syscall_count(&self) {
+    pub fn incr_syscall_count(&self, last_syscall: Option<Syscall>) {
         self.debug
             .syscall_count
             .set(self.debug.syscall_count.get() + 1);
-        self.debug.last_syscall.set(self.svc_number());
+        self.debug.last_syscall.set(last_syscall);
     }
 
-    pub fn sp(&self) -> usize {
-        self.current_stack_pointer as usize
+    pub fn sp(&self) -> *const usize {
+        self.current_stack_pointer as *const usize
     }
 
     pub fn lr(&self) -> usize {
@@ -910,35 +900,35 @@ impl Process<'a> {
         unsafe { read_volatile(pspr.offset(6)) }
     }
 
-    pub fn r0(&self) -> usize {
-        let pspr = self.current_stack_pointer as *const usize;
-        unsafe { read_volatile(pspr) }
-    }
+    // pub fn r0(&self) -> usize {
+    //     let pspr = self.current_stack_pointer as *const usize;
+    //     unsafe { read_volatile(pspr) }
+    // }
 
-    pub fn set_return_code(&mut self, return_code: ReturnCode) {
-        let r: isize = return_code.into();
-        self.set_r0(r);
-    }
+    // pub fn set_return_code(&mut self, return_code: ReturnCode) {
+    //     let r: isize = return_code.into();
+    //     self.set_r0(r);
+    // }
 
-    pub fn set_r0(&mut self, val: isize) {
-        let pspr = self.current_stack_pointer as *mut isize;
-        unsafe { write_volatile(pspr, val) }
-    }
+    // pub fn set_r0(&mut self, val: isize) {
+    //     let pspr = self.current_stack_pointer as *mut isize;
+    //     unsafe { write_volatile(pspr, val) }
+    // }
 
-    pub fn r1(&self) -> usize {
-        let pspr = self.current_stack_pointer as *const usize;
-        unsafe { read_volatile(pspr.offset(1)) }
-    }
+    // pub fn r1(&self) -> usize {
+    //     let pspr = self.current_stack_pointer as *const usize;
+    //     unsafe { read_volatile(pspr.offset(1)) }
+    // }
 
-    pub fn r2(&self) -> usize {
-        let pspr = self.current_stack_pointer as *const usize;
-        unsafe { read_volatile(pspr.offset(2)) }
-    }
+    // pub fn r2(&self) -> usize {
+    //     let pspr = self.current_stack_pointer as *const usize;
+    //     unsafe { read_volatile(pspr.offset(2)) }
+    // }
 
-    pub fn r3(&self) -> usize {
-        let pspr = self.current_stack_pointer as *const usize;
-        unsafe { read_volatile(pspr.offset(3)) }
-    }
+    // pub fn r3(&self) -> usize {
+    //     let pspr = self.current_stack_pointer as *const usize;
+    //     unsafe { read_volatile(pspr.offset(3)) }
+    // }
 
     pub fn r12(&self) -> usize {
         let pspr = self.current_stack_pointer as *const usize;
@@ -1180,12 +1170,13 @@ impl Process<'a> {
 
         // register values
         let (r0, r1, r2, r3, r12, sp, lr, pc, xpsr) = (
-            self.r0(),
-            self.r1(),
-            self.r2(),
-            self.r3(),
+            // self.r0(),
+            // self.r1(),
+            // self.r2(),
+            // self.r3(),
+            5, 6, 7, 8,
             self.r12(),
-            self.sp(),
+            self.sp() as usize,
             self.lr(),
             self.pc(),
             self.xpsr(),
