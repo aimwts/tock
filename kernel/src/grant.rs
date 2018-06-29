@@ -7,6 +7,7 @@ use core::ops::{Deref, DerefMut};
 use core::ptr::{read_volatile, write_volatile, Unique};
 use debug;
 use process::{self, Error};
+use syscall;
 
 pub static mut CONTAINER_COUNTER: usize = 0;
 
@@ -34,9 +35,9 @@ pub unsafe fn kernel_grant_for<T>(app_id: usize) -> *mut T {
 }
 
 impl<T> AppliedGrant<T> {
-    pub fn enter<F, R>(self, fun: F) -> R
+    pub fn enter<F, R, S>(self, fun: F) -> R
     where
-        F: FnOnce(&mut Owned<T>, &mut Allocator) -> R,
+        F: FnOnce(&mut Owned<T>, &mut Allocator<S>) -> R,
         R: Copy,
     {
         if AppId::is_kernel_idx(self.appid) {
@@ -57,8 +58,8 @@ impl<T> AppliedGrant<T> {
     }
 }
 
-pub struct Allocator<'a> {
-    app: Option<&'a mut &'a mut process::Process<'a>>,
+pub struct Allocator<'a, S: syscall::SyscallInterface> {
+    app: Option<&'a mut &'a mut process::Process<'a, S>>,
     app_id: usize,
 }
 
@@ -113,7 +114,7 @@ impl<T: ?Sized> DerefMut for Owned<T> {
     }
 }
 
-impl<'a> Allocator<'a> {
+impl<'a, S: syscall::SyscallInterface> Allocator<'a, S> {
     pub fn alloc<T>(&mut self, data: T) -> Result<Owned<T>, Error> {
         unsafe {
             let app_id = self.app_id;
@@ -207,9 +208,9 @@ impl<T: Default> Grant<T> {
         }
     }
 
-    pub fn enter<F, R>(&self, appid: AppId, fun: F) -> Result<R, Error>
+    pub fn enter<F, R, S>(&self, appid: AppId, fun: F) -> Result<R, Error>
     where
-        F: FnOnce(&mut Borrowed<T>, &mut Allocator) -> R,
+        F: FnOnce(&mut Borrowed<T>, &mut Allocator<S>) -> R,
         R: Copy,
     {
         unsafe {

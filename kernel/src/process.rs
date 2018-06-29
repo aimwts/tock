@@ -13,7 +13,7 @@ use common::math;
 use platform::mpu;
 use returncode::ReturnCode;
 use sched::Kernel;
-use syscall::Syscall;
+use syscall::{Syscall, SyscallInterface};
 use tbfheader;
 
 /// This is used in the hardfault handler.
@@ -27,7 +27,7 @@ extern "C" {
     pub fn switch_to_user(user_stack: *const u8, process_regs: &mut [usize; 8]) -> *mut u8;
 }
 
-pub static mut PROCS: &'static mut [Option<&mut Process<'static>>] = &mut [];
+pub static mut PROCS: &'static mut [Option<&mut Process<'static, ThisNeedsAType>>] = &mut [];
 
 /// Helper function to load processes from flash into an array of active
 /// processes. This is the default template for loading processes, but a board
@@ -39,11 +39,11 @@ pub static mut PROCS: &'static mut [Option<&mut Process<'static>>] = &mut [];
 /// number of processes are created, with process structures placed in the
 /// provided array. How process faults are handled by the kernel is also
 /// selected.
-pub unsafe fn load_processes(
+pub unsafe fn load_processes<S: SyscallInterface>(
     kernel: &'static Kernel,
     start_of_flash: *const u8,
     app_memory: &mut [u8],
-    procs: &mut [Option<&mut Process<'static>>],
+    procs: &mut [Option<&mut Process<'a, S>>],
     fault_response: FaultResponse,
 ) {
     let mut apps_in_flash_ptr = start_of_flash;
@@ -160,17 +160,17 @@ pub struct FunctionCall {
     pub pc: usize,
 }
 
-#[derive(Default)]
-struct StoredRegs {
-    r4: usize,
-    r5: usize,
-    r6: usize,
-    r7: usize,
-    r8: usize,
-    r9: usize,
-    r10: usize,
-    r11: usize,
-}
+// #[derive(Default)]
+// struct StoredRegs {
+//     r4: usize,
+//     r5: usize,
+//     r6: usize,
+//     r7: usize,
+//     r8: usize,
+//     r9: usize,
+//     r10: usize,
+//     r11: usize,
+// }
 
 /// State for helping with debugging apps.
 ///
@@ -203,7 +203,7 @@ struct ProcessDebug {
     restart_count: Cell<usize>,
 }
 
-pub struct Process<'a> {
+pub struct Process<'a, S: SyscallInterface> {
     /// Pointer to the main Kernel struct.
     kernel: &'static Kernel,
 
@@ -257,7 +257,7 @@ pub struct Process<'a> {
     header: tbfheader::TbfHeader,
 
     /// Saved each time the app switches to the kernel.
-    stored_regs: StoredRegs,
+    stored_regs: S::StoredState,
 
     /// The PC to jump to when switching back to the app.
     yield_pc: usize,
@@ -295,7 +295,7 @@ pub struct Process<'a> {
     debug: ProcessDebug,
 }
 
-impl Process<'a> {
+impl<S: SyscallInterface> Process<'a, S> {
     pub fn schedule(&mut self, callback: FunctionCall) -> bool {
         // If this app is in the `Fault` state then we shouldn't schedule
         // any work for it.
@@ -573,7 +573,7 @@ impl Process<'a> {
         remaining_app_memory: *mut u8,
         remaining_app_memory_size: usize,
         fault_response: FaultResponse,
-    ) -> (Option<&'static mut Process<'a>>, usize, usize) {
+    ) -> (Option<&'static mut Process<'a, S>>, usize, usize) {
         if let Some(tbf_header) = tbfheader::parse_and_validate_tbf_header(app_flash_address) {
             let app_flash_size = tbf_header.get_total_size() as usize;
 
@@ -848,17 +848,17 @@ impl Process<'a> {
         }
     }
 
-    /// Context switch to the process.
-    pub unsafe fn switch_to(&mut self) {
-        let psp = switch_to_user(
-            self.current_stack_pointer,
-            &mut *(&mut self.stored_regs as *mut StoredRegs as *mut [usize; 8]),
-        );
-        self.current_stack_pointer = psp;
-        if self.current_stack_pointer < self.debug.min_stack_pointer {
-            self.debug.min_stack_pointer = self.current_stack_pointer;
-        }
-    }
+    // /// Context switch to the process.
+    // pub unsafe fn switch_to(&mut self) {
+    //     let psp = switch_to_user(
+    //         self.current_stack_pointer,
+    //         &mut *(&mut self.stored_regs as *mut StoredRegs as *mut [usize; 8]),
+    //     );
+    //     self.current_stack_pointer = psp;
+    //     if self.current_stack_pointer < self.debug.min_stack_pointer {
+    //         self.debug.min_stack_pointer = self.current_stack_pointer;
+    //     }
+    // }
 
     pub fn incr_syscall_count(&self, last_syscall: Option<Syscall>) {
         self.debug
@@ -889,6 +889,13 @@ impl Process<'a> {
     pub fn xpsr(&self) -> usize {
         let pspr = self.current_stack_pointer as *const usize;
         unsafe { read_volatile(pspr.offset(7)) }
+    }
+
+    /// Return the per-process state that the kernel must store while the
+    /// process is not running. This state is passed back to the process when it
+    /// starts running.
+    pub fn stored_state(&mut self) -> &S::StoredState {
+        &mut self.stored_regs
     }
 
     pub unsafe fn fault_str<W: Write>(&mut self, writer: &mut W) {

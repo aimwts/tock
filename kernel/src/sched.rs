@@ -54,11 +54,11 @@ impl Kernel {
     }
 
     /// Main loop.
-    pub fn kernel_loop<P: Platform, C: Chip>(
+    pub fn kernel_loop<P: Platform, C: Chip, S: SyscallInterface>(
         &self,
         platform: &P,
         chip: &mut C,
-        processes: &'static mut [Option<&mut process::Process<'static>>],
+        processes: &'static mut [Option<&mut process::Process<S>>],
         ipc: Option<&ipc::IPC>,
     ) {
         let processes = unsafe {
@@ -88,11 +88,11 @@ impl Kernel {
         }
     }
 
-    unsafe fn do_process<P: Platform, C: Chip>(
+    unsafe fn do_process<P: Platform, C: Chip, S: SyscallInterface>(
         &self,
         platform: &P,
         chip: &mut C,
-        process: &mut Process,
+        process: &mut Process<S>,
         appid: AppId,
         ipc: Option<&::ipc::IPC>,
     ) {
@@ -115,6 +115,10 @@ impl Kernel {
                     chip.mpu().enable_mpu();
                     systick.enable(true);
                     process.switch_to();
+
+                    let new_sp = chip.syscall().switch_to_process(process.sp(), process.stored_state());
+
+
                     systick.enable(false);
                     chip.mpu().disable_mpu();
                 }

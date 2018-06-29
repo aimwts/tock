@@ -2,6 +2,7 @@
 
 use process::Process;
 use returncode::ReturnCode;
+use syscall::SyscallInterface;
 
 /// Handle the `memop` syscall.
 ///
@@ -36,7 +37,7 @@ use returncode::ReturnCode;
 ///   where the app has put the start of its heap. This is not strictly
 ///   necessary for correct operation, but allows for better debugging if the
 ///   app crashes.
-pub fn memop(process: &mut Process, op_type: usize, r1: usize) -> ReturnCode {
+pub fn memop<S: SyscallInterface>(process: &mut Process<S>, op_type: usize, r1: usize) -> ReturnCode {
     match op_type {
         // Op Type 0: BRK
         0 /* BRK */ => {
