@@ -343,7 +343,6 @@ impl Process<'a> {
     }
 
     pub unsafe fn fault_state(&mut self) {
-        // write_volatile(&mut APP_FAULT, 0);
         self.state = State::Fault;
 
         match self.fault_response {
@@ -861,23 +860,6 @@ impl Process<'a> {
         }
     }
 
-    // pub fn svc_number(&self) -> Option<Syscall> {
-    //     let psp = self.current_stack_pointer as *const *const u16;
-    //     unsafe {
-    //         let pcptr = read_volatile((psp as *const *const u16).offset(6));
-    //         let svc_instr = read_volatile(pcptr.offset(-1));
-    //         let svc_num = (svc_instr & 0xff) as u8;
-    //         match svc_num {
-    //             0 => Some(Syscall::YIELD),
-    //             1 => Some(Syscall::SUBSCRIBE),
-    //             2 => Some(Syscall::COMMAND),
-    //             3 => Some(Syscall::ALLOW),
-    //             4 => Some(Syscall::MEMOP),
-    //             _ => None,
-    //         }
-    //     }
-    // }
-
     pub fn incr_syscall_count(&self, last_syscall: Option<Syscall>) {
         self.debug
             .syscall_count
@@ -898,36 +880,6 @@ impl Process<'a> {
         let pspr = self.current_stack_pointer as *const usize;
         unsafe { read_volatile(pspr.offset(6)) }
     }
-
-    // pub fn r0(&self) -> usize {
-    //     let pspr = self.current_stack_pointer as *const usize;
-    //     unsafe { read_volatile(pspr) }
-    // }
-
-    // pub fn set_return_code(&mut self, return_code: ReturnCode) {
-    //     let r: isize = return_code.into();
-    //     self.set_r0(r);
-    // }
-
-    // pub fn set_r0(&mut self, val: isize) {
-    //     let pspr = self.current_stack_pointer as *mut isize;
-    //     unsafe { write_volatile(pspr, val) }
-    // }
-
-    // pub fn r1(&self) -> usize {
-    //     let pspr = self.current_stack_pointer as *const usize;
-    //     unsafe { read_volatile(pspr.offset(1)) }
-    // }
-
-    // pub fn r2(&self) -> usize {
-    //     let pspr = self.current_stack_pointer as *const usize;
-    //     unsafe { read_volatile(pspr.offset(2)) }
-    // }
-
-    // pub fn r3(&self) -> usize {
-    //     let pspr = self.current_stack_pointer as *const usize;
-    //     unsafe { read_volatile(pspr.offset(3)) }
-    // }
 
     pub fn r12(&self) -> usize {
         let pspr = self.current_stack_pointer as *const usize;
