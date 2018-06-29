@@ -15,7 +15,7 @@ use platform::{Chip, Platform};
 use process;
 use process::{Process, Task};
 use returncode::ReturnCode;
-use syscall::Syscall;
+use syscall::{Syscall, SyscallInterface};
 
 /// The time a process is permitted to run before being pre-empted
 const KERNEL_TICK_DURATION_US: u32 = 10000;
@@ -148,7 +148,10 @@ impl Kernel {
                 }
             }
 
-            if !process.syscall_fired() {
+            // Check if the reason this process stopped executing was that it
+            // called a syscall. If it did, then we can handle that syscall. If
+            // it didn't then we need to service the other processes.
+            if !chip.syscall().get_syscall_fired() {
                 break;
             }
 

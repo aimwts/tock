@@ -1,4 +1,6 @@
-//! Tock syscall number definitions.
+//! Tock syscall number definitions and arch-agnostic interface trait.
+
+use process;
 
 /// The syscall number assignments.
 #[derive(Copy, Clone, Debug)]
@@ -36,8 +38,8 @@ pub trait SyscallInterface {
 
     /// Replace the last stack frame with the new function call. This function
     /// is what should be executed when the process is resumed.
-    fn replace_function_call(&self, stack_pointer: *const u8, callback: FunctionCall);
+    fn replace_function_call(&self, stack_pointer: *const u8, callback: process::FunctionCall);
 
-    /// Context switch to a specific process.
-    fn switch_to_process(&self, stack_pointer: *const u8) -> *mut u8;
+    // /// Context switch to a specific process.
+    // fn switch_to_process(&self, stack_pointer: *const u8) -> *mut u8;
 }

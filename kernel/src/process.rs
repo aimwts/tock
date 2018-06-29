@@ -20,12 +20,6 @@ use tbfheader;
 #[allow(private_no_mangle_statics)]
 #[no_mangle]
 #[used]
-static mut SYSCALL_FIRED: usize = 0;
-
-/// This is used in the hardfault handler.
-#[allow(private_no_mangle_statics)]
-#[no_mangle]
-#[used]
 static mut APP_FAULT: usize = 0;
 
 /// This is used in the hardfault handler.
@@ -865,13 +859,9 @@ impl Process<'a> {
         read_volatile(&APP_FAULT) != 0
     }
 
-    pub unsafe fn syscall_fired(&self) -> bool {
-        read_volatile(&SYSCALL_FIRED) != 0
-    }
-
     /// Context switch to the process.
     pub unsafe fn switch_to(&mut self) {
-        write_volatile(&mut SYSCALL_FIRED, 0);
+        // write_volatile(&mut SYSCALL_FIRED, 0);
         let psp = switch_to_user(
             self.current_stack_pointer,
             &mut *(&mut self.stored_regs as *mut StoredRegs as *mut [usize; 8]),

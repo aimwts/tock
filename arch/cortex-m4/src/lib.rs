@@ -21,6 +21,7 @@ pub mod support {
 pub use cortexm::nvic;
 pub use cortexm::scb;
 pub use cortexm::systick;
+pub use cortexm::syscall;
 
 #[cfg(not(target_os = "none"))]
 pub unsafe extern "C" fn systick_handler() {}
