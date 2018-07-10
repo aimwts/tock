@@ -70,8 +70,7 @@ const FAULT_RESPONSE: kernel::procs::FaultResponse = kernel::procs::FaultRespons
 #[link_section = ".app_memory"]
 static mut APP_MEMORY: [u8; 16384] = [0; 16384];
 
-static mut PROCESSES: [Option<&'static mut kernel::procs::Process<'static>>; NUM_PROCS] =
-    [None, None];
+static mut PROCESSES: [Option<&'static kernel::procs::Process<'static>>; NUM_PROCS] = [None, None];
 
 /// Dummy buffer that causes the linker to reserve enough space for the stack.
 #[no_mangle]
@@ -254,6 +253,8 @@ pub unsafe fn reset_handler() {
         trng: true,
     });
 
+    let board_kernel = static_init!(kernel::Kernel, kernel::Kernel::new(&PROCESSES));
+
     // # CONSOLE
 
     // Create a shared UART channel for the console and for kernel debug.
@@ -273,7 +274,7 @@ pub unsafe fn reset_handler() {
             115200,
             &mut capsules::console::WRITE_BUF,
             &mut capsules::console::READ_BUF,
-            kernel::Grant::create()
+            kernel::Grant::create(board_kernel)
         )
     );
     hil::uart::UART::set_client(console_uart, console);
@@ -326,7 +327,7 @@ pub unsafe fn reset_handler() {
     );
     let alarm = static_init!(
         AlarmDriver<'static, VirtualMuxAlarm<'static, sam4l::ast::Ast>>,
-        AlarmDriver::new(virtual_alarm1, kernel::Grant::create())
+        AlarmDriver::new(virtual_alarm1, kernel::Grant::create(board_kernel))
     );
     virtual_alarm1.set_client(alarm);
 
@@ -354,7 +355,7 @@ pub unsafe fn reset_handler() {
 
     let ambient_light = static_init!(
         capsules::ambient_light::AmbientLight<'static>,
-        capsules::ambient_light::AmbientLight::new(isl29035, kernel::Grant::create())
+        capsules::ambient_light::AmbientLight::new(isl29035, kernel::Grant::create(board_kernel))
     );
     hil::sensors::AmbientLight::set_client(isl29035, ambient_light);
 
@@ -400,12 +401,12 @@ pub unsafe fn reset_handler() {
     si7021_alarm.set_client(si7021);
     let temp = static_init!(
         capsules::temperature::TemperatureSensor<'static>,
-        capsules::temperature::TemperatureSensor::new(si7021, kernel::Grant::create())
+        capsules::temperature::TemperatureSensor::new(si7021, kernel::Grant::create(board_kernel))
     );
     kernel::hil::sensors::TemperatureDriver::set_client(si7021, temp);
     let humidity = static_init!(
         capsules::humidity::HumiditySensor<'static>,
-        capsules::humidity::HumiditySensor::new(si7021, kernel::Grant::create())
+        capsules::humidity::HumiditySensor::new(si7021, kernel::Grant::create(board_kernel))
     );
     kernel::hil::sensors::HumidityDriver::set_client(si7021, humidity);
 
@@ -441,7 +442,7 @@ pub unsafe fn reset_handler() {
     sam4l::gpio::PC[13].set_client(fxos8700);
     let ninedof = static_init!(
         capsules::ninedof::NineDof<'static>,
-        capsules::ninedof::NineDof::new(fxos8700, kernel::Grant::create())
+        capsules::ninedof::NineDof::new(fxos8700, kernel::Grant::create(board_kernel))
     );
     hil::sensors::NineDof::set_client(fxos8700, ninedof);
 
@@ -527,7 +528,7 @@ pub unsafe fn reset_handler() {
 
     let button = static_init!(
         capsules::button::Button<'static, sam4l::gpio::GPIOPin>,
-        capsules::button::Button::new(button_pins, kernel::Grant::create())
+        capsules::button::Button::new(button_pins, kernel::Grant::create(board_kernel))
     );
     for &(btn, _) in button_pins.iter() {
         btn.set_client(button);
@@ -535,7 +536,10 @@ pub unsafe fn reset_handler() {
 
     let crc = static_init!(
         capsules::crc::Crc<'static, sam4l::crccu::Crccu<'static>>,
-        capsules::crc::Crc::new(&mut sam4l::crccu::CRCCU, kernel::Grant::create())
+        capsules::crc::Crc::new(
+            &mut sam4l::crccu::CRCCU,
+            kernel::Grant::create(board_kernel)
+        )
     );
 
     rf233_spi.set_client(rf233);
@@ -582,7 +586,11 @@ pub unsafe fn reset_handler() {
 
     let radio_driver = static_init!(
         capsules::ieee802154::RadioDriver<'static>,
-        capsules::ieee802154::RadioDriver::new(radio_mac, kernel::Grant::create(), &mut RADIO_BUF)
+        capsules::ieee802154::RadioDriver::new(
+            radio_mac,
+            kernel::Grant::create(board_kernel),
+            &mut RADIO_BUF
+        )
     );
 
     mac_device.set_key_procedure(radio_driver);
@@ -605,7 +613,7 @@ pub unsafe fn reset_handler() {
             'static,
             capsules::usbc_client::Client<'static, sam4l::usbc::Usbc<'static>>,
         >,
-        capsules::usb_user::UsbSyscallDriver::new(usb_client, kernel::Grant::create())
+        capsules::usb_user::UsbSyscallDriver::new(usb_client, kernel::Grant::create(board_kernel))
     );
 
     sam4l::flashcalw::FLASH_CONTROLLER.configure();
@@ -624,7 +632,7 @@ pub unsafe fn reset_handler() {
         capsules::nonvolatile_storage_driver::NonvolatileStorage<'static>,
         capsules::nonvolatile_storage_driver::NonvolatileStorage::new(
             nv_to_page,
-            kernel::Grant::create(),
+            kernel::Grant::create(board_kernel),
             0x60000, // Start address for userspace accessible region
             0x20000, // Length of userspace accessible region
             0,       // Start address of kernel accessible region
@@ -646,7 +654,7 @@ pub unsafe fn reset_handler() {
         button: button,
         crc: crc,
         spi: spi_syscalls,
-        ipc: kernel::ipc::IPC::new(),
+        ipc: kernel::ipc::IPC::new(board_kernel),
         ninedof: ninedof,
         radio_driver: radio_driver,
         usb_driver: usb_driver,
@@ -675,8 +683,6 @@ pub unsafe fn reset_handler() {
 
     debug!("Initialization complete. Entering main loop");
 
-    let board_kernel = static_init!(kernel::Kernel, kernel::Kernel::new());
-
     extern "C" {
         /// Beginning of the ROM region containing app images.
         static _sapps: u8;
@@ -689,5 +695,5 @@ pub unsafe fn reset_handler() {
         FAULT_RESPONSE,
     );
 
-    board_kernel.kernel_loop(&imix, &mut chip, &mut PROCESSES, Some(&imix.ipc));
+    board_kernel.kernel_loop(&imix, &mut chip, Some(&imix.ipc));
 }
