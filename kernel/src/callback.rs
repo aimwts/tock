@@ -13,6 +13,20 @@ pub struct AppId {
     idx: usize,
 }
 
+impl PartialEq for AppId {
+    fn eq(&self, other: &AppId) -> bool {
+        self.idx == other.idx
+    }
+}
+
+impl Eq for AppId {}
+
+impl fmt::Debug for AppId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.idx)
+    }
+}
+
 impl AppId {
     crate fn new(kernel: &'static Kernel, idx: usize) -> AppId {
         AppId {
