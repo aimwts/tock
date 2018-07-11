@@ -8,25 +8,25 @@ use core::ptr::{read_volatile, write_volatile, Unique};
 use callback::AppId;
 use process::Error;
 use sched::Kernel;
-use syscall;
+use syscall::SyscallInterface;
 
 crate static mut CONTAINER_COUNTER: usize = 0;
 
-pub struct Grant<T: Default, S> {
+pub struct Grant<T: Default, S: 'static + SyscallInterface> {
     kernel: &'static Kernel<S>,
     grant_num: usize,
     ptr: PhantomData<T>,
 }
 
-pub struct AppliedGrant<T, S> {
+pub struct AppliedGrant<T, S: 'static + SyscallInterface> {
     kernel: &'static Kernel<S>,
     appid: usize,
     grant: *mut T,
     _phantom: PhantomData<T>,
 }
 
-impl AppliedGrant<T, S> {
-    pub fn enter<F, R, S>(self, fun: F) -> R
+impl<T, S: 'static + SyscallInterface> AppliedGrant<T, S> {
+    pub fn enter<F, R>(self, fun: F) -> R
     where
         F: FnOnce(&mut Owned<T, S>, &mut Allocator<S>) -> R,
         R: Copy,
@@ -40,18 +40,18 @@ impl AppliedGrant<T, S> {
     }
 }
 
-pub struct Allocator<S> {
+pub struct Allocator<S: 'static + SyscallInterface> {
     kernel: &'static Kernel<S>,
     app_id: usize,
 }
 
-pub struct Owned<T: ?Sized, S> {
+pub struct Owned<T: ?Sized, S: 'static + SyscallInterface> {
     kernel: &'static Kernel<S>,
     data: Unique<T>,
     app_id: usize,
 }
 
-impl<T: ?Sized, S> Owned<T, S> {
+impl<T: ?Sized, S: 'static + SyscallInterface> Owned<T, S> {
     unsafe fn new(kernel: &'static Kernel<S>, data: *mut T, app_id: usize) -> Owned<T, S> {
         Owned {
             kernel: kernel,
@@ -65,7 +65,7 @@ impl<T: ?Sized, S> Owned<T, S> {
     }
 }
 
-impl<T: ?Sized, S> Drop for Owned<T, S> {
+impl<T: ?Sized, S: 'static + SyscallInterface> Drop for Owned<T, S> {
     fn drop(&mut self) {
         unsafe {
             let app_id = self.app_id;
@@ -77,20 +77,20 @@ impl<T: ?Sized, S> Drop for Owned<T, S> {
     }
 }
 
-impl<T: ?Sized, S> Deref for Owned<T, S> {
+impl<T: ?Sized, S: 'static + SyscallInterface> Deref for Owned<T, S> {
     type Target = T;
     fn deref(&self) -> &T {
         unsafe { self.data.as_ref() }
     }
 }
 
-impl<T: ?Sized, S> DerefMut for Owned<T, S> {
+impl<T: ?Sized, S: 'static + SyscallInterface> DerefMut for Owned<T, S> {
     fn deref_mut(&mut self) -> &mut T {
         unsafe { self.data.as_mut() }
     }
 }
 
-impl Allocator<S> {
+impl<S: 'static + SyscallInterface> Allocator<S> {
     pub fn alloc<T>(&mut self, data: T) -> Result<Owned<T, S>, Error> {
         unsafe {
             let app_id = self.app_id;
@@ -109,13 +109,13 @@ impl Allocator<S> {
     }
 }
 
-pub struct Borrowed<'a, T: 'a + ?Sized, S> {
+pub struct Borrowed<'a, T: 'a + ?Sized, S: 'static + SyscallInterface> {
     kernel: &'static Kernel<S>,
     data: &'a mut T,
     app_id: usize,
 }
 
-impl<T: 'a + ?Sized, S> Borrowed<'a, T, S> {
+impl<T: 'a + ?Sized, S: 'static + SyscallInterface> Borrowed<'a, T, S> {
     pub fn new(kernel: &'static Kernel<S>, data: &'a mut T, app_id: usize) -> Borrowed<'a, T, S> {
         Borrowed {
             kernel: kernel,
@@ -129,20 +129,20 @@ impl<T: 'a + ?Sized, S> Borrowed<'a, T, S> {
     }
 }
 
-impl<T: 'a + ?Sized, S> Deref for Borrowed<'a, T, S> {
+impl<T: 'a + ?Sized, S: 'static + SyscallInterface> Deref for Borrowed<'a, T, S> {
     type Target = T;
     fn deref(&self) -> &T {
         self.data
     }
 }
 
-impl<T: 'a + ?Sized, S> DerefMut for Borrowed<'a, T, S> {
+impl<T: 'a + ?Sized, S: 'static + SyscallInterface> DerefMut for Borrowed<'a, T, S> {
     fn deref_mut(&mut self) -> &mut T {
         self.data
     }
 }
 
-impl<T: Default, S> Grant<T, S> {
+impl<T: Default, S: 'static + SyscallInterface> Grant<T, S> {
     pub unsafe fn create(kernel: &'static Kernel<S>) -> Grant<T, S> {
         let ctr = read_volatile(&CONTAINER_COUNTER);
         write_volatile(&mut CONTAINER_COUNTER, ctr + 1);
@@ -172,7 +172,7 @@ impl<T: Default, S> Grant<T, S> {
         }
     }
 
-    pub fn enter<F, R, S>(&self, appid: AppId<S>, fun: F) -> Result<R, Error>
+    pub fn enter<F, R>(&self, appid: AppId<S>, fun: F) -> Result<R, Error>
     where
         F: FnOnce(&mut Borrowed<T, S>, &mut Allocator<S>) -> R,
         R: Copy,
@@ -221,14 +221,14 @@ impl<T: Default, S> Grant<T, S> {
     }
 }
 
-pub struct Iter<'a, T: 'a + Default, S> {
+pub struct Iter<'a, T: 'a + Default, S: 'static + SyscallInterface> {
     kernel: &'static Kernel<S>,
     grant: &'a Grant<T, S>,
     index: usize,
     len: usize,
 }
 
-impl<T: Default, S> Iterator for Iter<'a, T, S> {
+impl<T: Default, S: 'static + SyscallInterface> Iterator for Iter<'a, T, S> {
     type Item = AppliedGrant<T, S>;
 
     fn next(&mut self) -> Option<Self::Item> {

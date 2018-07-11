@@ -13,14 +13,15 @@ use mem::{AppSlice, Shared};
 use process;
 use returncode::ReturnCode;
 use sched::Kernel;
+use syscall::SyscallInterface;
 
-struct IPCData<S> {
+struct IPCData<S: 'static + SyscallInterface> {
     shared_memory: [Option<AppSlice<Shared, u8, S>>; 8],
     client_callbacks: [Option<Callback<S>>; 8],
     callback: Option<Callback<S>>,
 }
 
-impl<S> Default for IPCData<S> {
+impl<S:SyscallInterface> Default for IPCData<S> {
     fn default() -> IPCData<S> {
         IPCData {
             shared_memory: [None, None, None, None, None, None, None, None],
@@ -30,12 +31,12 @@ impl<S> Default for IPCData<S> {
     }
 }
 
-pub struct IPC<S> {
+pub struct IPC<S: 'static + SyscallInterface> {
     kernel: &'static Kernel<S>,
     data: Grant<IPCData<S>, S>,
 }
 
-impl<S> IPC<S> {
+impl<S: 'static + SyscallInterface> IPC<S> {
     pub unsafe fn new(kernel: &'static Kernel<S>) -> IPC<S> {
         IPC {
             kernel: kernel,
@@ -86,7 +87,7 @@ impl<S> IPC<S> {
     }
 }
 
-impl<S> Driver for IPC<S> {
+impl<S: 'static + SyscallInterface> Driver for IPC<S> {
     /// subscribe enables processes using IPC to register callbacks that fire
     /// when notify() is called.
     fn subscribe(

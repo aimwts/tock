@@ -24,7 +24,7 @@ const KERNEL_TICK_DURATION_US: u32 = 10000;
 const MIN_QUANTA_THRESHOLD_US: u32 = 500;
 
 /// Main object for the kernel. Each board will need to create one.
-pub struct Kernel<S: SyscallInterface> {
+pub struct Kernel<S: 'static + SyscallInterface> {
     /// How many "to-do" items exist at any given time. These include
     /// outstanding callbacks and processes in the Running state.
     work: Cell<usize>,
@@ -32,7 +32,7 @@ pub struct Kernel<S: SyscallInterface> {
     processes: &'static [Option<&'static mut Process<'static, S>>],
 }
 
-impl<S: SyscallInterface> Kernel<S> {
+impl<S: 'static + SyscallInterface> Kernel<S> {
     pub fn new(processes: &'static [Option<&'static mut Process<'static, S>>]) -> Kernel<S> {
         Kernel {
             work: Cell::new(0),

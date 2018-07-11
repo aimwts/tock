@@ -111,7 +111,7 @@ pub enum IPCType {
 }
 
 #[derive(Copy, Clone)]
-crate enum Task {
+crate enum Task<S: 'static + SyscallInterface> {
     FunctionCall(FunctionCall),
     IPC((AppId<S>, IPCType)),
 }
@@ -168,7 +168,7 @@ struct ProcessDebug {
     restart_count: usize,
 }
 
-pub struct Process<'a, S: SyscallInterface> {
+pub struct Process<'a, S: 'static + SyscallInterface> {
     /// Pointer to the main Kernel struct.
     kernel: &'static Kernel<S>,
 
@@ -251,7 +251,7 @@ pub struct Process<'a, S: SyscallInterface> {
 
     /// Essentially a list of callbacks that want to call functions in the
     /// process.
-    tasks: MapCell<RingBuffer<'a, Task>>,
+    tasks: MapCell<RingBuffer<'a, Task<S>>>,
 
     /// Name of the app. Public so that IPC can use it.
     pub package_name: &'static str,
@@ -260,7 +260,7 @@ pub struct Process<'a, S: SyscallInterface> {
     debug: MapCell<ProcessDebug>,
 }
 
-impl<S: SyscallInterface> Process<'a, S> {
+impl<S: 'static + SyscallInterface> Process<'a, S> {
     crate fn schedule(&self, callback: FunctionCall) -> bool {
         // If this app is in the `Fault` state then we shouldn't schedule
         // any work for it.
@@ -386,7 +386,7 @@ impl<S: SyscallInterface> Process<'a, S> {
         }
     }
 
-    crate fn dequeue_task(&self) -> Option<Task> {
+    crate fn dequeue_task(&self) -> Option<Task<S>> {
         self.tasks.map_or(None, |tasks| {
             tasks.dequeue().map(|cb| {
                 self.kernel.decrement_work();
