@@ -72,7 +72,7 @@ pub trait Driver {
     /// the magnitude of the return value of can signify extra information such
     /// as error type.
     #[allow(unused_variables)]
-    fn subscribe(&self, minor_num: usize, callback: Option<Callback>, app_id: AppId) -> ReturnCode {
+    fn subscribe(&self, minor_num: usize, callback: Option<Callback<S>>, app_id: AppId<S>) -> ReturnCode {
         ReturnCode::ENOSUPPORT
     }
 
@@ -92,7 +92,7 @@ pub trait Driver {
     /// side effects. This convention ensures that applications can query the
     /// kernel for supported drivers on a given platform.
     #[allow(unused_variables)]
-    fn command(&self, minor_num: usize, r2: usize, r3: usize, caller_id: AppId) -> ReturnCode {
+    fn command(&self, minor_num: usize, r2: usize, r3: usize, caller_id: AppId<S>) -> ReturnCode {
         ReturnCode::ENOSUPPORT
     }
 
@@ -105,9 +105,9 @@ pub trait Driver {
     #[allow(unused_variables)]
     fn allow(
         &self,
-        app: AppId,
+        app: AppId<S>,
         minor_num: usize,
-        slice: Option<AppSlice<Shared, u8>>,
+        slice: Option<AppSlice<Shared, u8, S>>,
     ) -> ReturnCode {
         ReturnCode::ENOSUPPORT
     }

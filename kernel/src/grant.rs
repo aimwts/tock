@@ -12,23 +12,23 @@ use syscall;
 
 crate static mut CONTAINER_COUNTER: usize = 0;
 
-pub struct Grant<T: Default> {
-    kernel: &'static Kernel,
+pub struct Grant<T: Default, S> {
+    kernel: &'static Kernel<S>,
     grant_num: usize,
     ptr: PhantomData<T>,
 }
 
-pub struct AppliedGrant<T> {
-    kernel: &'static Kernel,
+pub struct AppliedGrant<T, S> {
+    kernel: &'static Kernel<S>,
     appid: usize,
     grant: *mut T,
     _phantom: PhantomData<T>,
 }
 
-impl<T> AppliedGrant<T> {
+impl AppliedGrant<T, S> {
     pub fn enter<F, R, S>(self, fun: F) -> R
     where
-        F: FnOnce(&mut Owned<T>, &mut Allocator<S>) -> R,
+        F: FnOnce(&mut Owned<T, S>, &mut Allocator<S>) -> R,
         R: Copy,
     {
         let mut allocator = Allocator {
@@ -40,19 +40,19 @@ impl<T> AppliedGrant<T> {
     }
 }
 
-pub struct Allocator {
-    kernel: &'static Kernel,
+pub struct Allocator<S> {
+    kernel: &'static Kernel<S>,
     app_id: usize,
 }
 
-pub struct Owned<T: ?Sized> {
-    kernel: &'static Kernel,
+pub struct Owned<T: ?Sized, S> {
+    kernel: &'static Kernel<S>,
     data: Unique<T>,
     app_id: usize,
 }
 
-impl<T: ?Sized> Owned<T> {
-    unsafe fn new(kernel: &'static Kernel, data: *mut T, app_id: usize) -> Owned<T> {
+impl<T: ?Sized, S> Owned<T, S> {
+    unsafe fn new(kernel: &'static Kernel<S>, data: *mut T, app_id: usize) -> Owned<T, S> {
         Owned {
             kernel: kernel,
             data: Unique::new_unchecked(data),
@@ -60,12 +60,12 @@ impl<T: ?Sized> Owned<T> {
         }
     }
 
-    pub fn appid(&self) -> AppId {
+    pub fn appid(&self) -> AppId<S> {
         AppId::new(self.kernel, self.app_id)
     }
 }
 
-impl<T: ?Sized> Drop for Owned<T> {
+impl<T: ?Sized, S> Drop for Owned<T, S> {
     fn drop(&mut self) {
         unsafe {
             let app_id = self.app_id;
@@ -77,21 +77,21 @@ impl<T: ?Sized> Drop for Owned<T> {
     }
 }
 
-impl<T: ?Sized> Deref for Owned<T> {
+impl<T: ?Sized, S> Deref for Owned<T, S> {
     type Target = T;
     fn deref(&self) -> &T {
         unsafe { self.data.as_ref() }
     }
 }
 
-impl<T: ?Sized> DerefMut for Owned<T> {
+impl<T: ?Sized, S> DerefMut for Owned<T, S> {
     fn deref_mut(&mut self) -> &mut T {
         unsafe { self.data.as_mut() }
     }
 }
 
-impl Allocator {
-    pub fn alloc<T>(&mut self, data: T) -> Result<Owned<T>, Error> {
+impl Allocator<S> {
+    pub fn alloc<T>(&mut self, data: T) -> Result<Owned<T, S>, Error> {
         unsafe {
             let app_id = self.app_id;
             self.kernel
@@ -109,14 +109,14 @@ impl Allocator {
     }
 }
 
-pub struct Borrowed<'a, T: 'a + ?Sized> {
-    kernel: &'static Kernel,
+pub struct Borrowed<'a, T: 'a + ?Sized, S> {
+    kernel: &'static Kernel<S>,
     data: &'a mut T,
     app_id: usize,
 }
 
-impl<T: 'a + ?Sized> Borrowed<'a, T> {
-    pub fn new(kernel: &'static Kernel, data: &'a mut T, app_id: usize) -> Borrowed<'a, T> {
+impl<T: 'a + ?Sized, S> Borrowed<'a, T, S> {
+    pub fn new(kernel: &'static Kernel<S>, data: &'a mut T, app_id: usize) -> Borrowed<'a, T, S> {
         Borrowed {
             kernel: kernel,
             data: data,
@@ -124,26 +124,26 @@ impl<T: 'a + ?Sized> Borrowed<'a, T> {
         }
     }
 
-    pub fn appid(&self) -> AppId {
+    pub fn appid(&self) -> AppId<S> {
         AppId::new(self.kernel, self.app_id)
     }
 }
 
-impl<T: 'a + ?Sized> Deref for Borrowed<'a, T> {
+impl<T: 'a + ?Sized, S> Deref for Borrowed<'a, T, S> {
     type Target = T;
     fn deref(&self) -> &T {
         self.data
     }
 }
 
-impl<T: 'a + ?Sized> DerefMut for Borrowed<'a, T> {
+impl<T: 'a + ?Sized, S> DerefMut for Borrowed<'a, T, S> {
     fn deref_mut(&mut self) -> &mut T {
         self.data
     }
 }
 
-impl<T: Default> Grant<T> {
-    pub unsafe fn create(kernel: &'static Kernel) -> Grant<T> {
+impl<T: Default, S> Grant<T, S> {
+    pub unsafe fn create(kernel: &'static Kernel<S>) -> Grant<T, S> {
         let ctr = read_volatile(&CONTAINER_COUNTER);
         write_volatile(&mut CONTAINER_COUNTER, ctr + 1);
         Grant {
@@ -153,7 +153,7 @@ impl<T: Default> Grant<T> {
         }
     }
 
-    pub fn grant(&self, appid: AppId) -> Option<AppliedGrant<T>> {
+    pub fn grant(&self, appid: AppId<S>) -> Option<AppliedGrant<T, S>> {
         unsafe {
             let app_id = appid.idx();
             self.kernel.process_map_or(None, app_id, |process| {
@@ -172,9 +172,9 @@ impl<T: Default> Grant<T> {
         }
     }
 
-    pub fn enter<F, R, S>(&self, appid: AppId, fun: F) -> Result<R, Error>
+    pub fn enter<F, R, S>(&self, appid: AppId<S>, fun: F) -> Result<R, Error>
     where
-        F: FnOnce(&mut Borrowed<T>, &mut Allocator<S>) -> R,
+        F: FnOnce(&mut Borrowed<T, S>, &mut Allocator<S>) -> R,
         R: Copy,
     {
         unsafe {
@@ -187,7 +187,6 @@ impl<T: Default> Grant<T> {
                             let mut root = Borrowed::new(self.kernel, &mut *root_ptr, app_id);
                             let mut allocator = Allocator {
                                 kernel: self.kernel,
-                                // app: app,
                                 app_id: app_id,
                             };
                             let res = fun(&mut root, &mut allocator);
@@ -200,7 +199,7 @@ impl<T: Default> Grant<T> {
 
     pub fn each<F>(&self, fun: F)
     where
-        F: Fn(&mut Owned<T>),
+        F: Fn(&mut Owned<T, S>),
     {
         self.kernel
             .process_each_enumerate(|app_id, process| unsafe {
@@ -212,7 +211,7 @@ impl<T: Default> Grant<T> {
             });
     }
 
-    pub fn iter(&self) -> Iter<T> {
+    pub fn iter(&self) -> Iter<T, S> {
         Iter {
             kernel: self.kernel,
             grant: self,
@@ -222,15 +221,15 @@ impl<T: Default> Grant<T> {
     }
 }
 
-pub struct Iter<'a, T: 'a + Default> {
-    kernel: &'static Kernel,
-    grant: &'a Grant<T>,
+pub struct Iter<'a, T: 'a + Default, S> {
+    kernel: &'static Kernel<S>,
+    grant: &'a Grant<T, S>,
     index: usize,
     len: usize,
 }
 
-impl<T: Default> Iterator for Iter<'a, T> {
-    type Item = AppliedGrant<T>;
+impl<T: Default, S> Iterator for Iter<'a, T, S> {
+    type Item = AppliedGrant<T, S>;
 
     fn next(&mut self) -> Option<Self::Item> {
         while self.index < self.len {

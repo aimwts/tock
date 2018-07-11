@@ -33,7 +33,7 @@ pub struct Kernel<S: SyscallInterface> {
 }
 
 impl<S: SyscallInterface> Kernel<S> {
-    pub fn new(processes: &'static [Option<&'static mut Process<'static, S>>]) -> Kernel {
+    pub fn new(processes: &'static [Option<&'static mut Process<'static, S>>]) -> Kernel<S> {
         Kernel {
             work: Cell::new(0),
             processes: processes,
@@ -63,7 +63,7 @@ impl<S: SyscallInterface> Kernel<S> {
     /// reference to the process.
     crate fn process_map_or<F, R>(&self, default: R, process_index: usize, closure: F) -> R
     where
-        F: FnOnce(&Process) -> R,
+        F: FnOnce(&Process<S>) -> R,
     {
         if process_index > self.processes.len() {
             return default;
@@ -77,7 +77,7 @@ impl<S: SyscallInterface> Kernel<S> {
     /// processes and call the closure on every process that exists.
     crate fn process_each_enumerate<F>(&self, closure: F)
     where
-        F: Fn(usize, &Process),
+        F: Fn(usize, &Process<S>),
     {
         for (i, process) in self.processes.iter().enumerate() {
             match process {
@@ -95,7 +95,7 @@ impl<S: SyscallInterface> Kernel<S> {
     /// of the array of processes will stop.
     crate fn process_each_enumerate_stop<F>(&self, closure: F) -> ReturnCode
     where
-        F: Fn(usize, &Process) -> ReturnCode,
+        F: Fn(usize, &Process<S>) -> ReturnCode,
     {
         for (i, process) in self.processes.iter().enumerate() {
             match process {
@@ -121,7 +121,7 @@ impl<S: SyscallInterface> Kernel<S> {
         &'static self,
         platform: &P,
         chip: &mut C,
-        ipc: Option<&ipc::IPC>,
+        ipc: Option<&ipc::IPC<S>>,
     ) {
         loop {
             unsafe {
@@ -156,8 +156,8 @@ impl<S: SyscallInterface> Kernel<S> {
         platform: &P,
         chip: &mut C,
         process: &Process<S>,
-        appid: AppId,
-        ipc: Option<&::ipc::IPC>,
+        appid: AppId<S>,
+        ipc: Option<&::ipc::IPC<S>>,
     ) {
         let systick = chip.systick();
         systick.reset();

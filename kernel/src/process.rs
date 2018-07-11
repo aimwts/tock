@@ -38,7 +38,7 @@ extern "C" {
 /// provided array. How process faults are handled by the kernel is also
 /// selected.
 pub unsafe fn load_processes<S: SyscallInterface>(
-    kernel: &'static Kernel,
+    kernel: &'static Kernel<S>,
     start_of_flash: *const u8,
     app_memory: &mut [u8],
     procs: &mut [Option<&mut Process<'a, S>>],
@@ -113,11 +113,11 @@ pub enum IPCType {
 #[derive(Copy, Clone)]
 crate enum Task {
     FunctionCall(FunctionCall),
-    IPC((AppId, IPCType)),
+    IPC((AppId<S>, IPCType)),
 }
 
 #[derive(Copy, Clone, Debug)]
-crate struct FunctionCall {
+pub struct FunctionCall {
     crate r0: usize,
     crate r1: usize,
     crate r2: usize,
@@ -170,7 +170,7 @@ struct ProcessDebug {
 
 pub struct Process<'a, S: SyscallInterface> {
     /// Pointer to the main Kernel struct.
-    kernel: &'static Kernel,
+    kernel: &'static Kernel<S>,
 
     /// Application memory layout:
     ///
@@ -285,7 +285,7 @@ impl<S: SyscallInterface> Process<'a, S> {
         ret
     }
 
-    crate fn schedule_ipc(&self, from: AppId, cb_type: IPCType) {
+    crate fn schedule_ipc(&self, from: AppId<S>, cb_type: IPCType) {
         self.kernel.increment_work();
         // let ret = self.tasks.enqueue(Task::IPC((from, cb_type)));
         let ret = self
@@ -555,7 +555,7 @@ impl<S: SyscallInterface> Process<'a, S> {
     }
 
     crate unsafe fn create(
-        kernel: &'static Kernel,
+        kernel: &'static Kernel<S>,
         app_flash_address: *const u8,
         remaining_app_memory: *mut u8,
         remaining_app_memory_size: usize,

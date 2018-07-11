@@ -8,27 +8,27 @@ use sched::Kernel;
 
 /// Userspace app identifier.
 #[derive(Clone, Copy)]
-pub struct AppId {
-    kernel: &'static Kernel,
+pub struct AppId<S> {
+    kernel: &'static Kernel<S>,
     idx: usize,
 }
 
-impl PartialEq for AppId {
-    fn eq(&self, other: &AppId) -> bool {
+impl<S> PartialEq for AppId<S> {
+    fn eq(&self, other: &AppId<S>) -> bool {
         self.idx == other.idx
     }
 }
 
-impl Eq for AppId {}
+impl<S> Eq for AppId<S> {}
 
-impl fmt::Debug for AppId {
+impl<S> fmt::Debug for AppId<S> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.idx)
     }
 }
 
-impl AppId {
-    crate fn new(kernel: &'static Kernel, idx: usize) -> AppId {
+impl<S> AppId<S> {
+    crate fn new(kernel: &'static Kernel<S>, idx: usize) -> AppId<S> {
         AppId {
             kernel: kernel,
             idx: idx,
@@ -50,14 +50,14 @@ impl AppId {
 
 /// Wrapper around a function pointer.
 #[derive(Clone, Copy)]
-pub struct Callback {
-    app_id: AppId,
+pub struct Callback<S> {
+    app_id: AppId<S>,
     appdata: usize,
     fn_ptr: NonNull<*mut ()>,
 }
 
-impl Callback {
-    crate fn new(appid: AppId, appdata: usize, fn_ptr: NonNull<*mut ()>) -> Callback {
+impl<S> Callback<S> {
+    crate fn new(appid: AppId<S>, appdata: usize, fn_ptr: NonNull<*mut ()>) -> Callback<S> {
         Callback {
             app_id: appid,
             appdata: appdata,
