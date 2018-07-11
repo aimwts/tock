@@ -13,15 +13,15 @@ pub struct Private;
 #[derive(Debug)]
 pub struct Shared;
 
-pub struct AppPtr<L, T> {
-    kernel: &'static Kernel,
+pub struct AppPtr<'a, L, T> {
+    kernel: &'a Kernel<'a>,
     ptr: Unique<T>,
-    process: AppId,
+    process: AppId<'a>,
     _phantom: PhantomData<L>,
 }
 
-impl<L, T> AppPtr<L, T> {
-    unsafe fn new(kernel: &'static Kernel, ptr: *mut T, appid: AppId) -> AppPtr<L, T> {
+impl<L, T> AppPtr<'a, L, T> {
+    unsafe fn new(kernel: &'a Kernel<'a>, ptr: *mut T, appid: AppId<'a>) -> AppPtr<'a, L, T> {
         AppPtr {
             kernel: kernel,
             ptr: Unique::new_unchecked(ptr),
@@ -31,7 +31,7 @@ impl<L, T> AppPtr<L, T> {
     }
 }
 
-impl<L, T> Deref for AppPtr<L, T> {
+impl<L, T> Deref for AppPtr<'a, L, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
@@ -39,13 +39,13 @@ impl<L, T> Deref for AppPtr<L, T> {
     }
 }
 
-impl<L, T> DerefMut for AppPtr<L, T> {
+impl<L, T> DerefMut for AppPtr<'a, L, T> {
     fn deref_mut(&mut self) -> &mut T {
         unsafe { self.ptr.as_mut() }
     }
 }
 
-impl<L, T> Drop for AppPtr<L, T> {
+impl<L, T> Drop for AppPtr<'a, L, T> {
     fn drop(&mut self) {
         self.kernel
             .process_map_or((), self.process.idx(), |process| unsafe {
@@ -54,14 +54,14 @@ impl<L, T> Drop for AppPtr<L, T> {
     }
 }
 
-pub struct AppSlice<L, T> {
-    kernel: &'static Kernel,
-    ptr: AppPtr<L, T>,
+pub struct AppSlice<'a, L, T> {
+    kernel: &'a Kernel<'a>,
+    ptr: AppPtr<'a, L, T>,
     len: usize,
 }
 
-impl<L, T> AppSlice<L, T> {
-    crate fn new(kernel: &'static Kernel, ptr: *mut T, len: usize, appid: AppId) -> AppSlice<L, T> {
+impl<L, T> AppSlice<'a, L, T> {
+    crate fn new(kernel: &'a Kernel<'a>, ptr: *mut T, len: usize, appid: AppId<'a>) -> AppSlice<'a, L, T> {
         unsafe {
             AppSlice {
                 kernel: kernel,
@@ -106,13 +106,13 @@ impl<L, T> AppSlice<L, T> {
     }
 }
 
-impl<L, T> AsRef<[T]> for AppSlice<L, T> {
+impl<L, T> AsRef<[T]> for AppSlice<'a, L, T> {
     fn as_ref(&self) -> &[T] {
         unsafe { slice::from_raw_parts(self.ptr.ptr.as_ref(), self.len) }
     }
 }
 
-impl<L, T> AsMut<[T]> for AppSlice<L, T> {
+impl<L, T> AsMut<[T]> for AppSlice<'a, L, T> {
     fn as_mut(&mut self) -> &mut [T] {
         unsafe { slice::from_raw_parts_mut(self.ptr.ptr.as_mut(), self.len) }
     }

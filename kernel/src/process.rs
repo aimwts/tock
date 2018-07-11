@@ -49,10 +49,10 @@ extern "C" {
 /// provided array. How process faults are handled by the kernel is also
 /// selected.
 pub unsafe fn load_processes(
-    kernel: &'static Kernel,
+    kernel: &'a Kernel<'a>,
     start_of_flash: *const u8,
     app_memory: &mut [u8],
-    procs: &mut [Option<&Process<'static>>],
+    procs: &mut [Option<&Process<'a>>],
     fault_response: FaultResponse,
 ) {
     let mut apps_in_flash_ptr = start_of_flash;
@@ -122,9 +122,9 @@ pub enum IPCType {
 }
 
 #[derive(Copy, Clone)]
-crate enum Task {
+crate enum Task<'a> {
     FunctionCall(FunctionCall),
-    IPC((AppId, IPCType)),
+    IPC((AppId<'a>, IPCType)),
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -181,7 +181,7 @@ struct ProcessDebug {
 
 pub struct Process<'a> {
     /// Pointer to the main Kernel struct.
-    kernel: &'static Kernel,
+    kernel: &'a Kernel<'a>,
 
     /// Application memory layout:
     ///
@@ -262,7 +262,7 @@ pub struct Process<'a> {
 
     /// Essentially a list of callbacks that want to call functions in the
     /// process.
-    tasks: MapCell<RingBuffer<'a, Task>>,
+    tasks: MapCell<RingBuffer<'a, Task<'a>>>,
 
     /// Name of the app. Public so that IPC can use it.
     pub package_name: &'static str,
@@ -296,7 +296,7 @@ impl Process<'a> {
         ret
     }
 
-    crate fn schedule_ipc(&self, from: AppId, cb_type: IPCType) {
+    crate fn schedule_ipc(&self, from: AppId<'a>, cb_type: IPCType) {
         self.kernel.increment_work();
         // let ret = self.tasks.enqueue(Task::IPC((from, cb_type)));
         let ret = self
@@ -398,7 +398,7 @@ impl Process<'a> {
         }
     }
 
-    crate fn dequeue_task(&self) -> Option<Task> {
+    crate fn dequeue_task(&self) -> Option<Task<'a>> {
         self.tasks.map_or(None, |tasks| {
             tasks.dequeue().map(|cb| {
                 self.kernel.decrement_work();
@@ -567,12 +567,12 @@ impl Process<'a> {
     }
 
     crate unsafe fn create(
-        kernel: &'static Kernel,
+        kernel: &'a Kernel<'a>,
         app_flash_address: *const u8,
         remaining_app_memory: *mut u8,
         remaining_app_memory_size: usize,
         fault_response: FaultResponse,
-    ) -> (Option<&'static Process<'a>>, usize, usize) {
+    ) -> (Option<&'a Process<'a>>, usize, usize) {
         if let Some(tbf_header) = tbfheader::parse_and_validate_tbf_header(app_flash_address) {
             let app_flash_size = tbf_header.get_total_size() as usize;
 
@@ -668,7 +668,7 @@ impl Process<'a> {
 
             // Create the Process struct in the app grant region.
             let mut process: &mut Process =
-                &mut *(process_struct_memory_location as *mut Process<'static>);
+                &mut *(process_struct_memory_location as *mut Process<'a>);
 
             process.kernel = kernel;
             process.memory = app_memory;

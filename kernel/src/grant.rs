@@ -11,20 +11,20 @@ use sched::Kernel;
 
 crate static mut CONTAINER_COUNTER: usize = 0;
 
-pub struct Grant<T: Default> {
-    kernel: &'static Kernel,
+pub struct Grant<'a, T: Default> {
+    kernel: &'a Kernel<'a>,
     grant_num: usize,
     ptr: PhantomData<T>,
 }
 
-pub struct AppliedGrant<T> {
-    kernel: &'static Kernel,
+pub struct AppliedGrant<'a, T> {
+    kernel: &'a Kernel<'a>,
     appid: usize,
     grant: *mut T,
     _phantom: PhantomData<T>,
 }
 
-impl<T> AppliedGrant<T> {
+impl<T> AppliedGrant<'a, T> {
     pub fn enter<F, R>(self, fun: F) -> R
     where
         F: FnOnce(&mut Owned<T>, &mut Allocator) -> R,
@@ -39,19 +39,19 @@ impl<T> AppliedGrant<T> {
     }
 }
 
-pub struct Allocator {
-    kernel: &'static Kernel,
+pub struct Allocator<'a> {
+    kernel: &'a Kernel<'a>,
     app_id: usize,
 }
 
-pub struct Owned<T: ?Sized> {
-    kernel: &'static Kernel,
+pub struct Owned<'a, T: ?Sized> {
+    kernel: &'a Kernel<'a>,
     data: Unique<T>,
     app_id: usize,
 }
 
-impl<T: ?Sized> Owned<T> {
-    unsafe fn new(kernel: &'static Kernel, data: *mut T, app_id: usize) -> Owned<T> {
+impl<T: ?Sized> Owned<'a, T> {
+    unsafe fn new(kernel: &'a Kernel<'a>, data: *mut T, app_id: usize) -> Owned<T> {
         Owned {
             kernel: kernel,
             data: Unique::new_unchecked(data),
@@ -64,7 +64,7 @@ impl<T: ?Sized> Owned<T> {
     }
 }
 
-impl<T: ?Sized> Drop for Owned<T> {
+impl<T: ?Sized> Drop for Owned<'a, T> {
     fn drop(&mut self) {
         unsafe {
             let app_id = self.app_id;
@@ -76,20 +76,20 @@ impl<T: ?Sized> Drop for Owned<T> {
     }
 }
 
-impl<T: ?Sized> Deref for Owned<T> {
+impl<T: ?Sized> Deref for Owned<'a, T> {
     type Target = T;
     fn deref(&self) -> &T {
         unsafe { self.data.as_ref() }
     }
 }
 
-impl<T: ?Sized> DerefMut for Owned<T> {
+impl<T: ?Sized> DerefMut for Owned<'a, T> {
     fn deref_mut(&mut self) -> &mut T {
         unsafe { self.data.as_mut() }
     }
 }
 
-impl Allocator {
+impl Allocator<'a> {
     pub fn alloc<T>(&mut self, data: T) -> Result<Owned<T>, Error> {
         unsafe {
             let app_id = self.app_id;
@@ -109,13 +109,13 @@ impl Allocator {
 }
 
 pub struct Borrowed<'a, T: 'a + ?Sized> {
-    kernel: &'static Kernel,
+    kernel: &'a Kernel<'a>,
     data: &'a mut T,
     app_id: usize,
 }
 
 impl<T: 'a + ?Sized> Borrowed<'a, T> {
-    pub fn new(kernel: &'static Kernel, data: &'a mut T, app_id: usize) -> Borrowed<'a, T> {
+    pub fn new(kernel: &'a Kernel<'a>, data: &'a mut T, app_id: usize) -> Borrowed<'a, T> {
         Borrowed {
             kernel: kernel,
             data: data,
@@ -123,7 +123,7 @@ impl<T: 'a + ?Sized> Borrowed<'a, T> {
         }
     }
 
-    pub fn appid(&self) -> AppId {
+    pub fn appid(&self) -> AppId<'a> {
         AppId::new(self.kernel, self.app_id)
     }
 }
@@ -141,8 +141,8 @@ impl<T: 'a + ?Sized> DerefMut for Borrowed<'a, T> {
     }
 }
 
-impl<T: Default> Grant<T> {
-    pub unsafe fn create(kernel: &'static Kernel) -> Grant<T> {
+impl<T: 'a + Default> Grant<'a, T> {
+    pub unsafe fn create(kernel: &'a Kernel<'a>) -> Grant<T> {
         let ctr = read_volatile(&CONTAINER_COUNTER);
         write_volatile(&mut CONTAINER_COUNTER, ctr + 1);
         Grant {
@@ -222,14 +222,14 @@ impl<T: Default> Grant<T> {
 }
 
 pub struct Iter<'a, T: 'a + Default> {
-    kernel: &'static Kernel,
-    grant: &'a Grant<T>,
+    kernel: &'a Kernel<'a>,
+    grant: &'a Grant<'a, T>,
     index: usize,
     len: usize,
 }
 
 impl<T: Default> Iterator for Iter<'a, T> {
-    type Item = AppliedGrant<T>;
+    type Item = AppliedGrant<'a, T>;
 
     fn next(&mut self) -> Option<Self::Item> {
         while self.index < self.len {

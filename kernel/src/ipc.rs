@@ -14,14 +14,14 @@ use process;
 use returncode::ReturnCode;
 use sched::Kernel;
 
-struct IPCData {
-    shared_memory: [Option<AppSlice<Shared, u8>>; 8],
-    client_callbacks: [Option<Callback>; 8],
-    callback: Option<Callback>,
+struct IPCData<'a> {
+    shared_memory: [Option<AppSlice<'a, Shared, u8>>; 8],
+    client_callbacks: [Option<Callback<'a>>; 8],
+    callback: Option<Callback<'a>>,
 }
 
-impl Default for IPCData {
-    fn default() -> IPCData {
+impl Default for IPCData<'a> {
+    fn default() -> IPCData<'a> {
         IPCData {
             shared_memory: [None, None, None, None, None, None, None, None],
             client_callbacks: [None, None, None, None, None, None, None, None],
@@ -30,13 +30,13 @@ impl Default for IPCData {
     }
 }
 
-pub struct IPC {
-    kernel: &'static Kernel,
-    data: Grant<IPCData>,
+pub struct IPC<'a> {
+    kernel: &'a Kernel<'a>,
+    data: Grant<'a, IPCData<'a>>,
 }
 
-impl IPC {
-    pub unsafe fn new(kernel: &'static Kernel) -> IPC {
+impl IPC<'a> {
+    pub unsafe fn new(kernel: &'a Kernel<'a>) -> IPC {
         IPC {
             kernel: kernel,
             data: Grant::create(kernel),
@@ -45,8 +45,8 @@ impl IPC {
 
     pub unsafe fn schedule_callback(
         &self,
-        appid: AppId,
-        otherapp: AppId,
+        appid: AppId<'a>,
+        otherapp: AppId<'a>,
         cb_type: process::IPCType,
     ) {
         self.data
@@ -86,14 +86,14 @@ impl IPC {
     }
 }
 
-impl Driver for IPC {
+impl Driver<'a> for IPC<'a> {
     /// subscribe enables processes using IPC to register callbacks that fire
     /// when notify() is called.
     fn subscribe(
         &self,
         subscribe_num: usize,
-        callback: Option<Callback>,
-        app_id: AppId,
+        callback: Option<Callback<'a>>,
+        app_id: AppId<'a>,
     ) -> ReturnCode {
         match subscribe_num {
             // subscribe(0)
@@ -146,7 +146,7 @@ impl Driver for IPC {
         target_id: usize,
         client_or_svc: usize,
         _: usize,
-        appid: AppId,
+        appid: AppId<'a>,
     ) -> ReturnCode {
         let cb_type = if client_or_svc == 0 {
             process::IPCType::Service
@@ -176,9 +176,9 @@ impl Driver for IPC {
     /// access the buffer, it does not signal the service.
     fn allow(
         &self,
-        appid: AppId,
+        appid: AppId<'a>,
         target_id: usize,
-        slice: Option<AppSlice<Shared, u8>>,
+        slice: Option<AppSlice<'a, Shared, u8>>,
     ) -> ReturnCode {
         if target_id == 0 {
             match slice {

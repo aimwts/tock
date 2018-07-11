@@ -24,16 +24,16 @@ const KERNEL_TICK_DURATION_US: u32 = 10000;
 const MIN_QUANTA_THRESHOLD_US: u32 = 500;
 
 /// Main object for the kernel. Each board will need to create one.
-pub struct Kernel {
+pub struct Kernel<'a> {
     /// How many "to-do" items exist at any given time. These include
     /// outstanding callbacks and processes in the Running state.
     work: Cell<usize>,
     /// This holds a pointer to the static array of Process pointers.
-    processes: &'static [Option<&'static Process<'static>>],
+    processes: &'a [Option<&'a Process<'a>>],
 }
 
-impl Kernel {
-    pub fn new(processes: &'static [Option<&'static Process<'static>>]) -> Kernel {
+impl Kernel<'a> {
+    pub fn new(processes: &'a [Option<&'a Process<'a>>]) -> Kernel<'a> {
         Kernel {
             work: Cell::new(0),
             processes: processes,
@@ -118,10 +118,10 @@ impl Kernel {
 
     /// Main loop.
     pub fn kernel_loop<P: Platform, C: Chip>(
-        &'static self,
+        &self,
         platform: &P,
         chip: &mut C,
-        ipc: Option<&ipc::IPC>,
+        ipc: Option<&ipc::IPC<'a>>,
     ) {
         loop {
             unsafe {
@@ -152,12 +152,12 @@ impl Kernel {
     }
 
     unsafe fn do_process<P: Platform, C: Chip>(
-        &'static self,
+        &self,
         platform: &P,
         chip: &mut C,
-        process: &Process,
-        appid: AppId,
-        ipc: Option<&::ipc::IPC>,
+        process: &Process<'a>,
+        appid: AppId<'a>,
+        ipc: Option<&::ipc::IPC<'a>>,
     ) {
         let systick = chip.systick();
         systick.reset();
