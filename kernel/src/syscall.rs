@@ -73,9 +73,14 @@ pub trait SyscallInterface {
     /// again after the syscall.
     fn set_syscall_return_value(&self, stack_pointer: *const usize, return_value: isize);
 
-    /// Replace the last stack frame with the new function call. This function
-    /// is what should be executed when the process is resumed.
-    fn replace_function_call(&self, stack_pointer: *const usize, callback: process::FunctionCall);
+    /// Remove the last stack frame from the process and return the new stack
+    /// pointer location.
+    fn pop_syscall_stack(&self, stack_pointer: *const usize) -> *mut u8;
+
+    /// Add a stack frame with the new function call. This function
+    /// is what should be executed when the process is resumed. Returns the new
+    /// stack pointer.
+    fn push_function_call(&self, stack_pointer: *const usize, callback: process::FunctionCall) -> *mut u8;
 
     /// Context switch to a specific process.
     fn switch_to_process(&self, stack_pointer: *const usize, state: &Self::StoredState) -> *mut u8;

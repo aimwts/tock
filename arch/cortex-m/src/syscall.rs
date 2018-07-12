@@ -1,7 +1,7 @@
 //! Implementation of the architecture-specific portions of the kernel-userland
 //! system call interface.
 
-
+use core::cell::Cell;
 use core::ptr::{read_volatile, write_volatile};
 
 use kernel;
@@ -34,11 +34,21 @@ pub struct StoredRegs {
 }
 
 /// Constructor field is private to limit who can create a new one.
-pub struct SysCall();
+pub struct SysCall {
+    /// The PC to jump to when switching back to the app.
+    yield_pc: Cell<usize>,
+
+    /// Process State Register.
+    psr: Cell<usize>,
+}
 
 impl SysCall {
     pub const unsafe fn new() -> SysCall {
-        SysCall()
+        SysCall {
+            yield_pc: Cell::new(0),
+            // Set the Thumb bit and clear everything else
+            psr: Cell::new(0x01000000),
+        }
     }
 }
 
@@ -100,10 +110,41 @@ impl kernel::syscall::SyscallInterface for SysCall {
         }
     }
 
+    fn pop_syscall_stack(&self, stack_pointer: *const usize) -> *mut u8 {
+
+        unsafe {
+            self.yield_pc.set(read_volatile(stack_pointer.offset(6)));
+            self.psr.set(read_volatile(stack_pointer.offset(7)));
+            (stack_pointer as *mut usize).offset(8) as *mut u8
+            // self.debug.map(|debug| {
+            //     if self.current_stack_pointer.get() < debug.min_stack_pointer {
+            //         debug.min_stack_pointer = self.current_stack_pointer.get();
+            //     }
+            // });
+        }
+    }
+
     /// Replace the last stack frame with the new function call. This function
     /// is what should be executed when the process is resumed.
-    fn replace_function_call(&self, stack_pointer: *const usize, callback: kernel::procs::FunctionCall) {
+    fn push_function_call(&self, stack_pointer: *const usize, callback: kernel::procs::FunctionCall) -> *mut u8 {
+        unsafe {
+            // Fill in initial stack expected by SVC handler
+            // Top minus 8 u32s for r0-r3, r12, lr, pc and xPSR
+            let stack_bottom = (stack_pointer as *mut usize).offset(-8);
+            write_volatile(stack_bottom.offset(7), self.psr.get());
+            write_volatile(stack_bottom.offset(6), callback.pc | 1);
 
+            // Set the LR register to the saved PC so the callback returns to
+            // wherever wait was called. Set lowest bit to one because of THUMB
+            // instruction requirements.
+            write_volatile(stack_bottom.offset(5), self.yield_pc.get() | 0x1);
+            write_volatile(stack_bottom, callback.r0);
+            write_volatile(stack_bottom.offset(1), callback.r1);
+            write_volatile(stack_bottom.offset(2), callback.r2);
+            write_volatile(stack_bottom.offset(3), callback.r3);
+
+            stack_bottom as *mut u8
+        }
     }
 
     /// Context switch to a specific process.

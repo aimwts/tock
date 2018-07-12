@@ -126,6 +126,9 @@ pub trait ProcessType {
 
     fn in_exposed_bounds(&self, buf_start_addr: *const u8, size: usize) -> bool;
 
+
+    // grants
+
     unsafe fn alloc(&self, size: usize) -> Option<&mut [u8]>;
 
     // unsafe fn free<T>(&self, _: *mut T);
@@ -141,7 +144,7 @@ pub trait ProcessType {
     fn pop_syscall_stack(&self);
 
     /// Context switch to the process.
-    unsafe fn push_function_call(&self, callback: FunctionCall);
+    // unsafe fn push_function_call(&self, callback: FunctionCall);
 
     fn incr_syscall_count(&self, last_syscall: Option<Syscall>);
 
@@ -179,7 +182,7 @@ pub trait ProcessType {
 
     /// Replace the last stack frame with the new function call. This function
     /// is what should be executed when the process is resumed.
-    fn replace_function_call(&self, callback: FunctionCall);
+    fn push_function_call(&self, callback: FunctionCall);
 
     /// Context switch to a specific process.
     fn switch_to_process(&self) -> *mut u8;
@@ -238,11 +241,11 @@ pub enum Task {
 
 #[derive(Copy, Clone, Debug)]
 pub struct FunctionCall {
-    crate r0: usize,
-    crate r1: usize,
-    crate r2: usize,
-    crate r3: usize,
-    crate pc: usize,
+    pub r0: usize,
+    pub r1: usize,
+    pub r2: usize,
+    pub r3: usize,
+    pub pc: usize,
 }
 
 // #[derive(Default)]
@@ -292,6 +295,8 @@ pub struct Process<'a, S: 'static + SyscallInterface> {
     /// Pointer to the main Kernel struct.
     kernel: &'static Kernel,
 
+    /// Pointer to the struct that handles the architecture-specific syscall
+    /// functions.
     syscall: &'static S,
 
     /// Application memory layout:
@@ -346,11 +351,11 @@ pub struct Process<'a, S: 'static + SyscallInterface> {
     /// Saved each time the app switches to the kernel.
     stored_regs: S::StoredState,
 
-    /// The PC to jump to when switching back to the app.
-    yield_pc: Cell<usize>,
+    // /// The PC to jump to when switching back to the app.
+    // yield_pc: Cell<usize>,
 
-    /// Process State Register.
-    psr: Cell<usize>,
+    // /// Process State Register.
+    // psr: Cell<usize>,
 
     /// Whether the scheduler can schedule this app.
     state: Cell<State>,
@@ -476,8 +481,8 @@ impl<S:SyscallInterface> ProcessType for Process<'a, S> {
                 let init_fn = app_flash_address
                     .offset(self.header.get_init_function_offset() as isize)
                     as usize;
-                self.yield_pc.set(init_fn);
-                self.psr.set(0x01000000);
+                // self.yield_pc.set(init_fn);
+                // self.psr.set(0x01000000);
                 self.state.set(State::Yielded);
 
                 // Need to reset the grant region.
@@ -738,48 +743,9 @@ impl<S:SyscallInterface> ProcessType for Process<'a, S> {
     //     }
     // }
 
-    fn pop_syscall_stack(&self) {
-        let pspr = self.current_stack_pointer.get() as *const usize;
-        unsafe {
-            self.yield_pc.set(read_volatile(pspr.offset(6)));
-            self.psr.set(read_volatile(pspr.offset(7)));
-            self.current_stack_pointer
-                .set((self.current_stack_pointer.get() as *mut usize).offset(8) as *mut u8);
-            self.debug.map(|debug| {
-                if self.current_stack_pointer.get() < debug.min_stack_pointer {
-                    debug.min_stack_pointer = self.current_stack_pointer.get();
-                }
-            });
-        }
-    }
 
-    /// Context switch to the process.
-    unsafe fn push_function_call(&self, callback: FunctionCall) {
-        self.kernel.increment_work();
 
-        self.state.set(State::Running);
-        // Fill in initial stack expected by SVC handler
-        // Top minus 8 u32s for r0-r3, r12, lr, pc and xPSR
-        let stack_bottom = (self.current_stack_pointer.get() as *mut usize).offset(-8);
-        write_volatile(stack_bottom.offset(7), self.psr.get());
-        write_volatile(stack_bottom.offset(6), callback.pc | 1);
 
-        // Set the LR register to the saved PC so the callback returns to
-        // wherever wait was called. Set lowest bit to one because of THUMB
-        // instruction requirements.
-        write_volatile(stack_bottom.offset(5), self.yield_pc.get() | 0x1);
-        write_volatile(stack_bottom, callback.r0);
-        write_volatile(stack_bottom.offset(1), callback.r1);
-        write_volatile(stack_bottom.offset(2), callback.r2);
-        write_volatile(stack_bottom.offset(3), callback.r3);
-
-        self.current_stack_pointer.set(stack_bottom as *mut u8);
-        self.debug.map(|debug| {
-            if self.current_stack_pointer.get() < debug.min_stack_pointer {
-                debug.min_stack_pointer = self.current_stack_pointer.get();
-            }
-        });
-    }
 
     // /// Context switch to the process.
     // crate unsafe fn switch_to(&self) {
@@ -835,8 +801,58 @@ impl<S:SyscallInterface> ProcessType for Process<'a, S> {
         self.syscall.set_syscall_return_value(self.sp(), return_value);
     }
 
-    fn replace_function_call(&self, callback: FunctionCall) {
-        self.syscall.replace_function_call(self.sp(), callback);
+    // fn replace_function_call(&self, callback: FunctionCall) {
+    //     self.syscall.replace_function_call(self.sp(), callback);
+    // }
+
+    fn pop_syscall_stack(&self) {
+        let new_stack_pointer = self.syscall.pop_syscall_stack(self.sp());
+        let pspr = self.current_stack_pointer.get() as *const usize;
+        self.current_stack_pointer.set(new_stack_pointer);
+
+        // unsafe {
+        //     self.yield_pc.set(read_volatile(pspr.offset(6)));
+        //     self.psr.set(read_volatile(pspr.offset(7)));
+        //     self.current_stack_pointer
+        //         .set((self.current_stack_pointer.get() as *mut usize).offset(8) as *mut u8);
+        //     // self.debug.map(|debug| {
+        //     //     if self.current_stack_pointer.get() < debug.min_stack_pointer {
+        //     //         debug.min_stack_pointer = self.current_stack_pointer.get();
+        //     //     }
+        //     // });
+        // }
+    }
+
+    /// Context switch to the process.
+    fn push_function_call(&self, callback: FunctionCall) {
+        self.kernel.increment_work();
+
+        self.state.set(State::Running);
+
+
+        // // Fill in initial stack expected by SVC handler
+        // // Top minus 8 u32s for r0-r3, r12, lr, pc and xPSR
+        // let stack_bottom = (self.current_stack_pointer.get() as *mut usize).offset(-8);
+        // write_volatile(stack_bottom.offset(7), self.psr.get());
+        // write_volatile(stack_bottom.offset(6), callback.pc | 1);
+
+        // // Set the LR register to the saved PC so the callback returns to
+        // // wherever wait was called. Set lowest bit to one because of THUMB
+        // // instruction requirements.
+        // write_volatile(stack_bottom.offset(5), self.yield_pc.get() | 0x1);
+        // write_volatile(stack_bottom, callback.r0);
+        // write_volatile(stack_bottom.offset(1), callback.r1);
+        // write_volatile(stack_bottom.offset(2), callback.r2);
+        // write_volatile(stack_bottom.offset(3), callback.r3);
+
+        let stack_bottom = self.syscall.push_function_call(self.sp(), callback);
+
+        self.current_stack_pointer.set(stack_bottom as *mut u8);
+        self.debug.map(|debug| {
+            if self.current_stack_pointer.get() < debug.min_stack_pointer {
+                debug.min_stack_pointer = self.current_stack_pointer.get();
+            }
+        });
     }
 
     fn switch_to_process(&self) -> *mut u8 {
@@ -1180,7 +1196,8 @@ impl<S:SyscallInterface> ProcessType for Process<'a, S> {
   sp,
   lr,
   pc,
-  self.yield_pc.get(),
+  // self.yield_pc.get(),
+  0
   ));
         let _ = writer.write_fmt(format_args!(
             "\
@@ -1349,9 +1366,9 @@ impl<S: 'static + SyscallInterface> Process<'a, S> {
             process.flash = slice::from_raw_parts(app_flash_address, app_flash_size);
 
             process.stored_regs = Default::default();
-            process.yield_pc = Cell::new(init_fn);
+            // process.yield_pc = Cell::new(init_fn);
             // Set the Thumb bit and clear everything else
-            process.psr = Cell::new(0x01000000);
+            // process.psr = Cell::new(0x01000000);
 
             process.state = Cell::new(State::Yielded);
             process.fault_response = fault_response;
