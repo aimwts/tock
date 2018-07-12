@@ -43,7 +43,7 @@ pub unsafe fn load_processes<S: SyscallInterface>(
     start_of_flash: *const u8,
     app_memory: &mut [u8],
     // procs: &mut [Option<&Process<'static, S>>],
-    procs: &'static [Option<&'static ProcessType>],
+    procs: &'static mut [Option<&'static ProcessType>],
     fault_response: FaultResponse,
 ) {
     let mut apps_in_flash_ptr = start_of_flash;
@@ -864,7 +864,7 @@ impl<S: 'static + SyscallInterface> Process<'a, S> {
         remaining_app_memory: *mut u8,
         remaining_app_memory_size: usize,
         fault_response: FaultResponse,
-    ) -> (Option<&'static Process<'a, S>>, usize, usize) {
+    ) -> (Option<&'static ProcessType>, usize, usize) {
         if let Some(tbf_header) = tbfheader::parse_and_validate_tbf_header(app_flash_address) {
             let app_flash_size = tbf_header.get_total_size() as usize;
 
