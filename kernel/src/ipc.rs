@@ -36,7 +36,7 @@ pub struct IPC<'a> {
 }
 
 impl IPC<'a> {
-    pub unsafe fn new(kernel: &'a Kernel<'a>) -> IPC {
+    pub unsafe fn new(kernel: &'a Kernel<'a>) -> IPC<'a> {
         IPC {
             kernel: kernel,
             data: Grant::create(kernel),

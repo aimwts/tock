@@ -79,7 +79,7 @@ impl<L, T> AppSlice<'a, L, T> {
         self.ptr.ptr.as_ptr()
     }
 
-    crate unsafe fn expose_to(&self, appid: AppId) -> bool {
+    crate unsafe fn expose_to(&self, appid: AppId<'a>) -> bool {
         if appid.idx() != self.ptr.process.idx() {
             self.kernel.process_map_or(false, appid.idx(), |process| {
                 process.add_mpu_region(self.ptr() as *const u8, self.len() as u32)
