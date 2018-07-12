@@ -24,16 +24,16 @@ const KERNEL_TICK_DURATION_US: u32 = 10000;
 const MIN_QUANTA_THRESHOLD_US: u32 = 500;
 
 /// Main object for the kernel. Each board will need to create one.
-pub struct Kernel<S: SyscallInterface> {
+pub struct Kernel {
     /// How many "to-do" items exist at any given time. These include
     /// outstanding callbacks and processes in the Running state.
     work: Cell<usize>,
     /// This holds a pointer to the static array of Process pointers.
-    processes: &'static [Option<&'static mut Process<'static, S>>],
+    processes: &'static [Option<&'static process::ProcessType>],
 }
 
-impl<S: SyscallInterface> Kernel<S> {
-    pub fn new(processes: &'static [Option<&'static mut Process<'static, S>>]) -> Kernel {
+impl Kernel {
+    pub fn new(processes: &'static [Option<&'static process::ProcessType>]) -> Kernel {
         Kernel {
             work: Cell::new(0),
             processes: processes,
@@ -63,7 +63,7 @@ impl<S: SyscallInterface> Kernel<S> {
     /// reference to the process.
     crate fn process_map_or<F, R>(&self, default: R, process_index: usize, closure: F) -> R
     where
-        F: FnOnce(&Process) -> R,
+        F: FnOnce(&process::ProcessType) -> R,
     {
         if process_index > self.processes.len() {
             return default;
@@ -77,7 +77,7 @@ impl<S: SyscallInterface> Kernel<S> {
     /// processes and call the closure on every process that exists.
     crate fn process_each_enumerate<F>(&self, closure: F)
     where
-        F: Fn(usize, &Process),
+        F: Fn(usize, &process::ProcessType),
     {
         for (i, process) in self.processes.iter().enumerate() {
             match process {
@@ -95,7 +95,7 @@ impl<S: SyscallInterface> Kernel<S> {
     /// of the array of processes will stop.
     crate fn process_each_enumerate_stop<F>(&self, closure: F) -> ReturnCode
     where
-        F: Fn(usize, &Process) -> ReturnCode,
+        F: Fn(usize, &process::ProcessType) -> ReturnCode,
     {
         for (i, process) in self.processes.iter().enumerate() {
             match process {
@@ -155,7 +155,7 @@ impl<S: SyscallInterface> Kernel<S> {
         &'static self,
         platform: &P,
         chip: &mut C,
-        process: &Process<S>,
+        process: &process::ProcessType,
         appid: AppId,
         ipc: Option<&::ipc::IPC>,
     ) {
