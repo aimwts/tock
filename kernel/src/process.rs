@@ -184,6 +184,14 @@ pub trait ProcessType {
     /// Context switch to a specific process.
     fn switch_to_process(&self) -> *mut u8;
 
+
+
+
+
+    unsafe fn fault_str(&self, writer: &mut Write);
+
+    unsafe fn statistics_str(&self, writer: &mut Write);
+
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -834,6 +842,391 @@ impl<S:SyscallInterface> ProcessType for Process<'a, S> {
     fn switch_to_process(&self) -> *mut u8 {
         self.syscall.switch_to_process(self.sp(), &self.stored_regs)
     }
+
+
+
+    unsafe fn fault_str(&self, writer: &mut Write) {
+        let _ccr = SCB_REGISTERS[0];
+        let cfsr = SCB_REGISTERS[1];
+        let hfsr = SCB_REGISTERS[2];
+        let mmfar = SCB_REGISTERS[3];
+        let bfar = SCB_REGISTERS[4];
+
+        let iaccviol = (cfsr & 0x01) == 0x01;
+        let daccviol = (cfsr & 0x02) == 0x02;
+        let munstkerr = (cfsr & 0x08) == 0x08;
+        let mstkerr = (cfsr & 0x10) == 0x10;
+        let mlsperr = (cfsr & 0x20) == 0x20;
+        let mmfarvalid = (cfsr & 0x80) == 0x80;
+
+        let ibuserr = ((cfsr >> 8) & 0x01) == 0x01;
+        let preciserr = ((cfsr >> 8) & 0x02) == 0x02;
+        let impreciserr = ((cfsr >> 8) & 0x04) == 0x04;
+        let unstkerr = ((cfsr >> 8) & 0x08) == 0x08;
+        let stkerr = ((cfsr >> 8) & 0x10) == 0x10;
+        let lsperr = ((cfsr >> 8) & 0x20) == 0x20;
+        let bfarvalid = ((cfsr >> 8) & 0x80) == 0x80;
+
+        let undefinstr = ((cfsr >> 16) & 0x01) == 0x01;
+        let invstate = ((cfsr >> 16) & 0x02) == 0x02;
+        let invpc = ((cfsr >> 16) & 0x04) == 0x04;
+        let nocp = ((cfsr >> 16) & 0x08) == 0x08;
+        let unaligned = ((cfsr >> 16) & 0x100) == 0x100;
+        let divbysero = ((cfsr >> 16) & 0x200) == 0x200;
+
+        let vecttbl = (hfsr & 0x02) == 0x02;
+        let forced = (hfsr & 0x40000000) == 0x40000000;
+
+        let _ = writer.write_fmt(format_args!("\r\n---| Fault Status |---\r\n"));
+
+        if iaccviol {
+            let _ = writer.write_fmt(format_args!(
+                "Instruction Access Violation:       {}\r\n",
+                iaccviol
+            ));
+        }
+        if daccviol {
+            let _ = writer.write_fmt(format_args!(
+                "Data Access Violation:              {}\r\n",
+                daccviol
+            ));
+        }
+        if munstkerr {
+            let _ = writer.write_fmt(format_args!(
+                "Memory Management Unstacking Fault: {}\r\n",
+                munstkerr
+            ));
+        }
+        if mstkerr {
+            let _ = writer.write_fmt(format_args!(
+                "Memory Management Stacking Fault:   {}\r\n",
+                mstkerr
+            ));
+        }
+        if mlsperr {
+            let _ = writer.write_fmt(format_args!(
+                "Memory Management Lazy FP Fault:    {}\r\n",
+                mlsperr
+            ));
+        }
+
+        if ibuserr {
+            let _ = writer.write_fmt(format_args!(
+                "Instruction Bus Error:              {}\r\n",
+                ibuserr
+            ));
+        }
+        if preciserr {
+            let _ = writer.write_fmt(format_args!(
+                "Precise Data Bus Error:             {}\r\n",
+                preciserr
+            ));
+        }
+        if impreciserr {
+            let _ = writer.write_fmt(format_args!(
+                "Imprecise Data Bus Error:           {}\r\n",
+                impreciserr
+            ));
+        }
+        if unstkerr {
+            let _ = writer.write_fmt(format_args!(
+                "Bus Unstacking Fault:               {}\r\n",
+                unstkerr
+            ));
+        }
+        if stkerr {
+            let _ = writer.write_fmt(format_args!(
+                "Bus Stacking Fault:                 {}\r\n",
+                stkerr
+            ));
+        }
+        if lsperr {
+            let _ = writer.write_fmt(format_args!(
+                "Bus Lazy FP Fault:                  {}\r\n",
+                lsperr
+            ));
+        }
+
+        if undefinstr {
+            let _ = writer.write_fmt(format_args!(
+                "Undefined Instruction Usage Fault:  {}\r\n",
+                undefinstr
+            ));
+        }
+        if invstate {
+            let _ = writer.write_fmt(format_args!(
+                "Invalid State Usage Fault:          {}\r\n",
+                invstate
+            ));
+        }
+        if invpc {
+            let _ = writer.write_fmt(format_args!(
+                "Invalid PC Load Usage Fault:        {}\r\n",
+                invpc
+            ));
+        }
+        if nocp {
+            let _ = writer.write_fmt(format_args!(
+                "No Coprocessor Usage Fault:         {}\r\n",
+                nocp
+            ));
+        }
+        if unaligned {
+            let _ = writer.write_fmt(format_args!(
+                "Unaligned Access Usage Fault:       {}\r\n",
+                unaligned
+            ));
+        }
+        if divbysero {
+            let _ = writer.write_fmt(format_args!(
+                "Divide By Zero:                     {}\r\n",
+                divbysero
+            ));
+        }
+
+        if vecttbl {
+            let _ = writer.write_fmt(format_args!(
+                "Bus Fault on Vector Table Read:     {}\r\n",
+                vecttbl
+            ));
+        }
+        if forced {
+            let _ = writer.write_fmt(format_args!(
+                "Forced Hard Fault:                  {}\r\n",
+                forced
+            ));
+        }
+
+        if mmfarvalid {
+            let _ = writer.write_fmt(format_args!(
+                "Faulting Memory Address:            {:#010X}\r\n",
+                mmfar
+            ));
+        }
+        if bfarvalid {
+            let _ = writer.write_fmt(format_args!(
+                "Bus Fault Address:                  {:#010X}\r\n",
+                bfar
+            ));
+        }
+
+        if cfsr == 0 && hfsr == 0 {
+            let _ = writer.write_fmt(format_args!("No faults detected.\r\n"));
+        } else {
+            let _ = writer.write_fmt(format_args!(
+                "Fault Status Register (CFSR):       {:#010X}\r\n",
+                cfsr
+            ));
+            let _ = writer.write_fmt(format_args!(
+                "Hard Fault Status Register (HFSR):  {:#010X}\r\n",
+                hfsr
+            ));
+        }
+    }
+
+    unsafe fn statistics_str(&self, writer: &mut Write) {
+        // Flash
+        let flash_end = self.flash.as_ptr().offset(self.flash.len() as isize) as usize;
+        let flash_start = self.flash.as_ptr() as usize;
+        let flash_protected_size = self.header.get_protected_size() as usize;
+        let flash_app_start = flash_start + flash_protected_size;
+        let flash_app_size = flash_end - flash_app_start;
+        let flash_init_fn = flash_start + self.header.get_init_function_offset() as usize;
+
+        // SRAM addresses
+        let sram_end = self.memory.as_ptr().offset(self.memory.len() as isize) as usize;
+        let sram_grant_start = self.kernel_memory_break.get() as usize;
+        let sram_heap_end = self.app_break.get() as usize;
+        let sram_heap_start = self.debug.map_or(ptr::null(), |debug| {
+            debug.app_heap_start_pointer.unwrap_or(ptr::null())
+        }) as usize;
+        let sram_stack_start = self.debug.map_or(ptr::null(), |debug| {
+            debug.app_stack_start_pointer.unwrap_or(ptr::null())
+        }) as usize;
+        let sram_stack_bottom =
+            self.debug
+                .map_or(ptr::null(), |debug| debug.min_stack_pointer) as usize;
+        let sram_start = self.memory.as_ptr() as usize;
+
+        // SRAM sizes
+        let sram_grant_size = sram_end - sram_grant_start;
+        let sram_heap_size = sram_heap_end - sram_heap_start;
+        let sram_data_size = sram_heap_start - sram_stack_start;
+        let sram_stack_size = sram_stack_start - sram_stack_bottom;
+        let sram_grant_allocated = sram_end - sram_grant_start;
+        let sram_heap_allocated = sram_grant_start - sram_heap_start;
+        let sram_stack_allocated = sram_stack_start - sram_start;
+        let sram_data_allocated = sram_data_size as usize;
+
+        // checking on sram
+        let mut sram_grant_error_str = "          ";
+        if sram_grant_size > sram_grant_allocated {
+            sram_grant_error_str = " EXCEEDED!"
+        }
+        let mut sram_heap_error_str = "          ";
+        if sram_heap_size > sram_heap_allocated {
+            sram_heap_error_str = " EXCEEDED!"
+        }
+        let mut sram_stack_error_str = "          ";
+        if sram_stack_size > sram_stack_allocated {
+            sram_stack_error_str = " EXCEEDED!"
+        }
+
+        // application statistics
+        let events_queued = self.tasks.map_or(0, |tasks| tasks.len());
+        let syscall_count = self.debug.map_or(0, |debug| debug.syscall_count);
+        let last_syscall = self.debug.map(|debug| debug.last_syscall);
+        let dropped_callback_count = self.debug.map_or(0, |debug| debug.dropped_callback_count);
+        let restart_count = self.debug.map_or(0, |debug| debug.restart_count);
+
+        // register values
+        let (r0, r1, r2, r3, r12, sp, lr, pc, xpsr) = (
+            // self.r0(),
+            // self.r1(),
+            // self.r2(),
+            // self.r3(),
+            5, 6, 7, 8,
+            self.r12(),
+            self.sp() as usize,
+            self.lr(),
+            self.pc(),
+            self.xpsr(),
+        );
+
+        let _ = writer.write_fmt(format_args!(
+            "\
+             App: {}   -   [{:?}]\
+             \r\n Events Queued: {}   Syscall Count: {}   Dropped Callback Count: {}\
+             \n Restart Count: {}\n",
+            self.package_name,
+            self.state,
+            events_queued,
+            syscall_count,
+            dropped_callback_count,
+            restart_count,
+        ));
+
+        let _ = match last_syscall {
+            Some(syscall) => writer.write_fmt(format_args!(" Last Syscall: {:?}", syscall)),
+            None => writer.write_fmt(format_args!(" Last Syscall: None")),
+        };
+
+        let _ = writer.write_fmt(format_args!("\
+\r\n\
+\r\n ╔═══════════╤══════════════════════════════════════════╗\
+\r\n ║  Address  │ Region Name    Used | Allocated (bytes)  ║\
+\r\n ╚{:#010X}═╪══════════════════════════════════════════╝\
+\r\n             │ ▼ Grant      {:6} | {:6}{}\
+  \r\n  {:#010X} ┼───────────────────────────────────────────\
+\r\n             │ Unused\
+  \r\n  {:#010X} ┼───────────────────────────────────────────\
+\r\n             │ ▲ Heap       {:6} | {:6}{}     S\
+  \r\n  {:#010X} ┼─────────────────────────────────────────── R\
+\r\n             │ Data         {:6} | {:6}               A\
+  \r\n  {:#010X} ┼─────────────────────────────────────────── M\
+\r\n             │ ▼ Stack      {:6} | {:6}{}\
+  \r\n  {:#010X} ┼───────────────────────────────────────────\
+\r\n             │ Unused\
+  \r\n  {:#010X} ┴───────────────────────────────────────────\
+\r\n             .....\
+  \r\n  {:#010X} ┬─────────────────────────────────────────── F\
+\r\n             │ App Flash    {:6}                        L\
+  \r\n  {:#010X} ┼─────────────────────────────────────────── A\
+\r\n             │ Protected    {:6}                        S\
+  \r\n  {:#010X} ┴─────────────────────────────────────────── H\
+\r\n\
+  \r\n  R0 : {:#010X}    R6 : {:#010X}\
+  \r\n  R1 : {:#010X}    R7 : {:#010X}\
+  \r\n  R2 : {:#010X}    R8 : {:#010X}\
+  \r\n  R3 : {:#010X}    R10: {:#010X}\
+  \r\n  R4 : {:#010X}    R11: {:#010X}\
+  \r\n  R5 : {:#010X}    R12: {:#010X}\
+  \r\n  R9 : {:#010X} (Static Base Register)\
+  \r\n  SP : {:#010X} (Process Stack Pointer)\
+  \r\n  LR : {:#010X}\
+  \r\n  PC : {:#010X}\
+  \r\n YPC : {:#010X}\
+\r\n",
+  sram_end,
+  sram_grant_size, sram_grant_allocated, sram_grant_error_str,
+  sram_grant_start,
+  sram_heap_end,
+  sram_heap_size, sram_heap_allocated, sram_heap_error_str,
+  sram_heap_start,
+  sram_data_size, sram_data_allocated,
+  sram_stack_start,
+  sram_stack_size, sram_stack_allocated, sram_stack_error_str,
+  sram_stack_bottom,
+  sram_start,
+  flash_end,
+  flash_app_size,
+  flash_app_start,
+  flash_protected_size,
+  flash_start,
+  // r0, self.stored_regs.r6,
+  // r1, self.stored_regs.r7,
+  // r2, self.stored_regs.r8,
+  // r3, self.stored_regs.r10,
+  // self.stored_regs.r4, self.stored_regs.r11,
+  // self.stored_regs.r5, r12,
+  // self.stored_regs.r9,
+  r0, 6,
+  r1, 7,
+  r2, 8,
+  r3, 10,
+  4, 11,
+  5, r12,
+  9,
+  sp,
+  lr,
+  pc,
+  self.yield_pc.get(),
+  ));
+        let _ = writer.write_fmt(format_args!(
+            "\
+             \r\n APSR: N {} Z {} C {} V {} Q {}\
+             \r\n       GE {} {} {} {}",
+            (xpsr >> 31) & 0x1,
+            (xpsr >> 30) & 0x1,
+            (xpsr >> 29) & 0x1,
+            (xpsr >> 28) & 0x1,
+            (xpsr >> 27) & 0x1,
+            (xpsr >> 19) & 0x1,
+            (xpsr >> 18) & 0x1,
+            (xpsr >> 17) & 0x1,
+            (xpsr >> 16) & 0x1,
+        ));
+        let ici_it = (((xpsr >> 25) & 0x3) << 6) | ((xpsr >> 10) & 0x3f);
+        let thumb_bit = ((xpsr >> 24) & 0x1) == 1;
+        let _ = writer.write_fmt(format_args!(
+            "\
+             \r\n EPSR: ICI.IT {:#04x}\
+             \r\n       ThumbBit {} {}",
+            ici_it,
+            thumb_bit,
+            if thumb_bit {
+                ""
+            } else {
+                "!!ERROR - Cortex M Thumb only!"
+            },
+        ));
+        let _ = writer.write_fmt(format_args!("\r\n To debug, run "));
+        let _ = writer.write_fmt(format_args!(
+            "`make debug RAM_START={:#x} FLASH_INIT={:#x}`",
+            sram_start, flash_init_fn
+        ));
+        let _ = writer.write_fmt(format_args!(
+            "\r\n in the app's folder and open the .lst file.\r\n\r\n"
+        ));
+    }
+
+
+
+
+
+
+
+
 }
 
 impl<S: 'static + SyscallInterface> Process<'a, S> {
@@ -1049,378 +1442,5 @@ impl<S: 'static + SyscallInterface> Process<'a, S> {
 
 
 
-    crate unsafe fn fault_str<W: Write>(&self, writer: &mut W) {
-        let _ccr = SCB_REGISTERS[0];
-        let cfsr = SCB_REGISTERS[1];
-        let hfsr = SCB_REGISTERS[2];
-        let mmfar = SCB_REGISTERS[3];
-        let bfar = SCB_REGISTERS[4];
 
-        let iaccviol = (cfsr & 0x01) == 0x01;
-        let daccviol = (cfsr & 0x02) == 0x02;
-        let munstkerr = (cfsr & 0x08) == 0x08;
-        let mstkerr = (cfsr & 0x10) == 0x10;
-        let mlsperr = (cfsr & 0x20) == 0x20;
-        let mmfarvalid = (cfsr & 0x80) == 0x80;
-
-        let ibuserr = ((cfsr >> 8) & 0x01) == 0x01;
-        let preciserr = ((cfsr >> 8) & 0x02) == 0x02;
-        let impreciserr = ((cfsr >> 8) & 0x04) == 0x04;
-        let unstkerr = ((cfsr >> 8) & 0x08) == 0x08;
-        let stkerr = ((cfsr >> 8) & 0x10) == 0x10;
-        let lsperr = ((cfsr >> 8) & 0x20) == 0x20;
-        let bfarvalid = ((cfsr >> 8) & 0x80) == 0x80;
-
-        let undefinstr = ((cfsr >> 16) & 0x01) == 0x01;
-        let invstate = ((cfsr >> 16) & 0x02) == 0x02;
-        let invpc = ((cfsr >> 16) & 0x04) == 0x04;
-        let nocp = ((cfsr >> 16) & 0x08) == 0x08;
-        let unaligned = ((cfsr >> 16) & 0x100) == 0x100;
-        let divbysero = ((cfsr >> 16) & 0x200) == 0x200;
-
-        let vecttbl = (hfsr & 0x02) == 0x02;
-        let forced = (hfsr & 0x40000000) == 0x40000000;
-
-        let _ = writer.write_fmt(format_args!("\r\n---| Fault Status |---\r\n"));
-
-        if iaccviol {
-            let _ = writer.write_fmt(format_args!(
-                "Instruction Access Violation:       {}\r\n",
-                iaccviol
-            ));
-        }
-        if daccviol {
-            let _ = writer.write_fmt(format_args!(
-                "Data Access Violation:              {}\r\n",
-                daccviol
-            ));
-        }
-        if munstkerr {
-            let _ = writer.write_fmt(format_args!(
-                "Memory Management Unstacking Fault: {}\r\n",
-                munstkerr
-            ));
-        }
-        if mstkerr {
-            let _ = writer.write_fmt(format_args!(
-                "Memory Management Stacking Fault:   {}\r\n",
-                mstkerr
-            ));
-        }
-        if mlsperr {
-            let _ = writer.write_fmt(format_args!(
-                "Memory Management Lazy FP Fault:    {}\r\n",
-                mlsperr
-            ));
-        }
-
-        if ibuserr {
-            let _ = writer.write_fmt(format_args!(
-                "Instruction Bus Error:              {}\r\n",
-                ibuserr
-            ));
-        }
-        if preciserr {
-            let _ = writer.write_fmt(format_args!(
-                "Precise Data Bus Error:             {}\r\n",
-                preciserr
-            ));
-        }
-        if impreciserr {
-            let _ = writer.write_fmt(format_args!(
-                "Imprecise Data Bus Error:           {}\r\n",
-                impreciserr
-            ));
-        }
-        if unstkerr {
-            let _ = writer.write_fmt(format_args!(
-                "Bus Unstacking Fault:               {}\r\n",
-                unstkerr
-            ));
-        }
-        if stkerr {
-            let _ = writer.write_fmt(format_args!(
-                "Bus Stacking Fault:                 {}\r\n",
-                stkerr
-            ));
-        }
-        if lsperr {
-            let _ = writer.write_fmt(format_args!(
-                "Bus Lazy FP Fault:                  {}\r\n",
-                lsperr
-            ));
-        }
-
-        if undefinstr {
-            let _ = writer.write_fmt(format_args!(
-                "Undefined Instruction Usage Fault:  {}\r\n",
-                undefinstr
-            ));
-        }
-        if invstate {
-            let _ = writer.write_fmt(format_args!(
-                "Invalid State Usage Fault:          {}\r\n",
-                invstate
-            ));
-        }
-        if invpc {
-            let _ = writer.write_fmt(format_args!(
-                "Invalid PC Load Usage Fault:        {}\r\n",
-                invpc
-            ));
-        }
-        if nocp {
-            let _ = writer.write_fmt(format_args!(
-                "No Coprocessor Usage Fault:         {}\r\n",
-                nocp
-            ));
-        }
-        if unaligned {
-            let _ = writer.write_fmt(format_args!(
-                "Unaligned Access Usage Fault:       {}\r\n",
-                unaligned
-            ));
-        }
-        if divbysero {
-            let _ = writer.write_fmt(format_args!(
-                "Divide By Zero:                     {}\r\n",
-                divbysero
-            ));
-        }
-
-        if vecttbl {
-            let _ = writer.write_fmt(format_args!(
-                "Bus Fault on Vector Table Read:     {}\r\n",
-                vecttbl
-            ));
-        }
-        if forced {
-            let _ = writer.write_fmt(format_args!(
-                "Forced Hard Fault:                  {}\r\n",
-                forced
-            ));
-        }
-
-        if mmfarvalid {
-            let _ = writer.write_fmt(format_args!(
-                "Faulting Memory Address:            {:#010X}\r\n",
-                mmfar
-            ));
-        }
-        if bfarvalid {
-            let _ = writer.write_fmt(format_args!(
-                "Bus Fault Address:                  {:#010X}\r\n",
-                bfar
-            ));
-        }
-
-        if cfsr == 0 && hfsr == 0 {
-            let _ = writer.write_fmt(format_args!("No faults detected.\r\n"));
-        } else {
-            let _ = writer.write_fmt(format_args!(
-                "Fault Status Register (CFSR):       {:#010X}\r\n",
-                cfsr
-            ));
-            let _ = writer.write_fmt(format_args!(
-                "Hard Fault Status Register (HFSR):  {:#010X}\r\n",
-                hfsr
-            ));
-        }
-    }
-
-    crate unsafe fn statistics_str<W: Write>(&self, writer: &mut W) {
-        // Flash
-        let flash_end = self.flash.as_ptr().offset(self.flash.len() as isize) as usize;
-        let flash_start = self.flash.as_ptr() as usize;
-        let flash_protected_size = self.header.get_protected_size() as usize;
-        let flash_app_start = flash_start + flash_protected_size;
-        let flash_app_size = flash_end - flash_app_start;
-        let flash_init_fn = flash_start + self.header.get_init_function_offset() as usize;
-
-        // SRAM addresses
-        let sram_end = self.memory.as_ptr().offset(self.memory.len() as isize) as usize;
-        let sram_grant_start = self.kernel_memory_break.get() as usize;
-        let sram_heap_end = self.app_break.get() as usize;
-        let sram_heap_start = self.debug.map_or(ptr::null(), |debug| {
-            debug.app_heap_start_pointer.unwrap_or(ptr::null())
-        }) as usize;
-        let sram_stack_start = self.debug.map_or(ptr::null(), |debug| {
-            debug.app_stack_start_pointer.unwrap_or(ptr::null())
-        }) as usize;
-        let sram_stack_bottom =
-            self.debug
-                .map_or(ptr::null(), |debug| debug.min_stack_pointer) as usize;
-        let sram_start = self.memory.as_ptr() as usize;
-
-        // SRAM sizes
-        let sram_grant_size = sram_end - sram_grant_start;
-        let sram_heap_size = sram_heap_end - sram_heap_start;
-        let sram_data_size = sram_heap_start - sram_stack_start;
-        let sram_stack_size = sram_stack_start - sram_stack_bottom;
-        let sram_grant_allocated = sram_end - sram_grant_start;
-        let sram_heap_allocated = sram_grant_start - sram_heap_start;
-        let sram_stack_allocated = sram_stack_start - sram_start;
-        let sram_data_allocated = sram_data_size as usize;
-
-        // checking on sram
-        let mut sram_grant_error_str = "          ";
-        if sram_grant_size > sram_grant_allocated {
-            sram_grant_error_str = " EXCEEDED!"
-        }
-        let mut sram_heap_error_str = "          ";
-        if sram_heap_size > sram_heap_allocated {
-            sram_heap_error_str = " EXCEEDED!"
-        }
-        let mut sram_stack_error_str = "          ";
-        if sram_stack_size > sram_stack_allocated {
-            sram_stack_error_str = " EXCEEDED!"
-        }
-
-        // application statistics
-        let events_queued = self.tasks.map_or(0, |tasks| tasks.len());
-        let syscall_count = self.debug.map_or(0, |debug| debug.syscall_count);
-        let last_syscall = self.debug.map(|debug| debug.last_syscall);
-        let dropped_callback_count = self.debug.map_or(0, |debug| debug.dropped_callback_count);
-        let restart_count = self.debug.map_or(0, |debug| debug.restart_count);
-
-        // register values
-        let (r0, r1, r2, r3, r12, sp, lr, pc, xpsr) = (
-            // self.r0(),
-            // self.r1(),
-            // self.r2(),
-            // self.r3(),
-            5, 6, 7, 8,
-            self.r12(),
-            self.sp() as usize,
-            self.lr(),
-            self.pc(),
-            self.xpsr(),
-        );
-
-        let _ = writer.write_fmt(format_args!(
-            "\
-             App: {}   -   [{:?}]\
-             \r\n Events Queued: {}   Syscall Count: {}   Dropped Callback Count: {}\
-             \n Restart Count: {}\n",
-            self.package_name,
-            self.state,
-            events_queued,
-            syscall_count,
-            dropped_callback_count,
-            restart_count,
-        ));
-
-        let _ = match last_syscall {
-            Some(syscall) => writer.write_fmt(format_args!(" Last Syscall: {:?}", syscall)),
-            None => writer.write_fmt(format_args!(" Last Syscall: None")),
-        };
-
-        let _ = writer.write_fmt(format_args!("\
-\r\n\
-\r\n ╔═══════════╤══════════════════════════════════════════╗\
-\r\n ║  Address  │ Region Name    Used | Allocated (bytes)  ║\
-\r\n ╚{:#010X}═╪══════════════════════════════════════════╝\
-\r\n             │ ▼ Grant      {:6} | {:6}{}\
-  \r\n  {:#010X} ┼───────────────────────────────────────────\
-\r\n             │ Unused\
-  \r\n  {:#010X} ┼───────────────────────────────────────────\
-\r\n             │ ▲ Heap       {:6} | {:6}{}     S\
-  \r\n  {:#010X} ┼─────────────────────────────────────────── R\
-\r\n             │ Data         {:6} | {:6}               A\
-  \r\n  {:#010X} ┼─────────────────────────────────────────── M\
-\r\n             │ ▼ Stack      {:6} | {:6}{}\
-  \r\n  {:#010X} ┼───────────────────────────────────────────\
-\r\n             │ Unused\
-  \r\n  {:#010X} ┴───────────────────────────────────────────\
-\r\n             .....\
-  \r\n  {:#010X} ┬─────────────────────────────────────────── F\
-\r\n             │ App Flash    {:6}                        L\
-  \r\n  {:#010X} ┼─────────────────────────────────────────── A\
-\r\n             │ Protected    {:6}                        S\
-  \r\n  {:#010X} ┴─────────────────────────────────────────── H\
-\r\n\
-  \r\n  R0 : {:#010X}    R6 : {:#010X}\
-  \r\n  R1 : {:#010X}    R7 : {:#010X}\
-  \r\n  R2 : {:#010X}    R8 : {:#010X}\
-  \r\n  R3 : {:#010X}    R10: {:#010X}\
-  \r\n  R4 : {:#010X}    R11: {:#010X}\
-  \r\n  R5 : {:#010X}    R12: {:#010X}\
-  \r\n  R9 : {:#010X} (Static Base Register)\
-  \r\n  SP : {:#010X} (Process Stack Pointer)\
-  \r\n  LR : {:#010X}\
-  \r\n  PC : {:#010X}\
-  \r\n YPC : {:#010X}\
-\r\n",
-  sram_end,
-  sram_grant_size, sram_grant_allocated, sram_grant_error_str,
-  sram_grant_start,
-  sram_heap_end,
-  sram_heap_size, sram_heap_allocated, sram_heap_error_str,
-  sram_heap_start,
-  sram_data_size, sram_data_allocated,
-  sram_stack_start,
-  sram_stack_size, sram_stack_allocated, sram_stack_error_str,
-  sram_stack_bottom,
-  sram_start,
-  flash_end,
-  flash_app_size,
-  flash_app_start,
-  flash_protected_size,
-  flash_start,
-  // r0, self.stored_regs.r6,
-  // r1, self.stored_regs.r7,
-  // r2, self.stored_regs.r8,
-  // r3, self.stored_regs.r10,
-  // self.stored_regs.r4, self.stored_regs.r11,
-  // self.stored_regs.r5, r12,
-  // self.stored_regs.r9,
-  r0, 6,
-  r1, 7,
-  r2, 8,
-  r3, 10,
-  4, 11,
-  5, r12,
-  9,
-  sp,
-  lr,
-  pc,
-  self.yield_pc.get(),
-  ));
-        let _ = writer.write_fmt(format_args!(
-            "\
-             \r\n APSR: N {} Z {} C {} V {} Q {}\
-             \r\n       GE {} {} {} {}",
-            (xpsr >> 31) & 0x1,
-            (xpsr >> 30) & 0x1,
-            (xpsr >> 29) & 0x1,
-            (xpsr >> 28) & 0x1,
-            (xpsr >> 27) & 0x1,
-            (xpsr >> 19) & 0x1,
-            (xpsr >> 18) & 0x1,
-            (xpsr >> 17) & 0x1,
-            (xpsr >> 16) & 0x1,
-        ));
-        let ici_it = (((xpsr >> 25) & 0x3) << 6) | ((xpsr >> 10) & 0x3f);
-        let thumb_bit = ((xpsr >> 24) & 0x1) == 1;
-        let _ = writer.write_fmt(format_args!(
-            "\
-             \r\n EPSR: ICI.IT {:#04x}\
-             \r\n       ThumbBit {} {}",
-            ici_it,
-            thumb_bit,
-            if thumb_bit {
-                ""
-            } else {
-                "!!ERROR - Cortex M Thumb only!"
-            },
-        ));
-        let _ = writer.write_fmt(format_args!("\r\n To debug, run "));
-        let _ = writer.write_fmt(format_args!(
-            "`make debug RAM_START={:#x} FLASH_INIT={:#x}`",
-            sram_start, flash_init_fn
-        ));
-        let _ = writer.write_fmt(format_args!(
-            "\r\n in the app's folder and open the .lst file.\r\n\r\n"
-        ));
-    }
 }

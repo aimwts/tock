@@ -44,7 +44,7 @@ use core::str;
 use common::cells::NumericCellExt;
 use common::cells::{MapCell, TakeCell};
 use hil;
-use process::Process;
+use process::ProcessType;
 use syscall::SyscallInterface;
 
 ///////////////////////////////////////////////////////////////////
@@ -53,12 +53,12 @@ use syscall::SyscallInterface;
 /// Tock default panic routine.
 ///
 /// **NOTE:** The supplied `writer` must be synchronous.
-pub unsafe fn panic<L: hil::led::Led, W: Write, S:SyscallInterface>(
+pub unsafe fn panic<L: hil::led::Led, W: Write>(
     leds: &mut [&mut L],
     writer: &mut W,
     panic_info: &PanicInfo,
     nop: &Fn(),
-    processes: &'static [Option<&'static Process<'static, S>>],
+    processes: &'static [Option<&'static ProcessType>],
 ) -> ! {
     panic_begin(nop);
     panic_banner(writer, panic_info);
@@ -105,8 +105,8 @@ pub unsafe fn panic_banner<W: Write>(writer: &mut W, panic_info: &PanicInfo) {
 /// More detailed prints about all processes.
 ///
 /// **NOTE:** The supplied `writer` must be synchronous.
-pub unsafe fn panic_process_info<W: Write, S: SyscallInterface>(
-    procs: &'static [Option<&'static Process<'static, S>>],
+pub unsafe fn panic_process_info<W: Write>(
+    procs: &'static [Option<&'static ProcessType>],
     writer: &mut W,
 ) {
     // Print fault status once
