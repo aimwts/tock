@@ -117,7 +117,7 @@ crate enum Task {
 }
 
 #[derive(Copy, Clone, Debug)]
-crate struct FunctionCall {
+pub struct FunctionCall {
     crate r0: usize,
     crate r1: usize,
     crate r2: usize,
