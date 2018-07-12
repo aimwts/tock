@@ -177,11 +177,7 @@ impl Kernel {
                     process.setup_mpu(chip.mpu());
                     chip.mpu().enable_mpu();
                     systick.enable(true);
-                    // process.switch_to();
-
-                    let new_sp = process.switch_to_process();
-
-
+                    process.switch_to();
                     systick.enable(false);
                     chip.mpu().disable_mpu();
                 }

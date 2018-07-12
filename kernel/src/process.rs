@@ -185,7 +185,7 @@ pub trait ProcessType {
     fn push_function_call(&self, callback: FunctionCall);
 
     /// Context switch to a specific process.
-    fn switch_to_process(&self) -> *mut u8;
+    fn switch_to(&self);
 
 
 
@@ -239,6 +239,7 @@ pub enum Task {
     IPC((AppId, IPCType)),
 }
 
+/// Struct that defines a callback that can be passed to a process.
 #[derive(Copy, Clone, Debug)]
 pub struct FunctionCall {
     pub r0: usize,
@@ -247,18 +248,6 @@ pub struct FunctionCall {
     pub r3: usize,
     pub pc: usize,
 }
-
-// #[derive(Default)]
-// struct StoredRegs {
-//     r4: usize,
-//     r5: usize,
-//     r6: usize,
-//     r7: usize,
-//     r8: usize,
-//     r9: usize,
-//     r10: usize,
-//     r11: usize,
-// }
 
 /// State for helping with debugging apps.
 ///
@@ -785,6 +774,11 @@ impl<S:SyscallInterface> ProcessType for Process<'a, S> {
         self.package_name.as_bytes()
     }
 
+
+
+
+
+
     fn get_context_switch_reason(&self) -> syscall::ContextSwitchReason {
         self.syscall.get_context_switch_reason()
     }
@@ -848,15 +842,19 @@ impl<S:SyscallInterface> ProcessType for Process<'a, S> {
         let stack_bottom = self.syscall.push_function_call(self.sp(), callback);
 
         self.current_stack_pointer.set(stack_bottom as *mut u8);
-        self.debug.map(|debug| {
-            if self.current_stack_pointer.get() < debug.min_stack_pointer {
-                debug.min_stack_pointer = self.current_stack_pointer.get();
-            }
-        });
+        self.debug_set_max_stack_depth();
     }
 
-    fn switch_to_process(&self) -> *mut u8 {
-        self.syscall.switch_to_process(self.sp(), &self.stored_regs)
+    fn switch_to(&self) {
+        let stack_pointer = self.syscall.switch_to_process(self.sp(), &self.stored_regs);
+
+        self.current_stack_pointer.set(stack_pointer);
+        self.debug_set_max_stack_depth();
+        // self.debug.map(|debug| {
+            // if self.current_stack_pointer.get() < debug.min_stack_pointer {
+            //     debug.min_stack_pointer = self.current_stack_pointer.get();
+            // }
+        // });
     }
 
 
@@ -1455,6 +1453,14 @@ impl<S: 'static + SyscallInterface> Process<'a, S> {
             let ctr_ptr = (self.mem_end() as *mut *mut usize).offset(-(grant_num + 1));
             write_volatile(ctr_ptr, ptr::null_mut());
         }
+    }
+
+    fn debug_set_max_stack_depth(&self) {
+        self.debug.map(|debug| {
+            if self.current_stack_pointer.get() < debug.min_stack_pointer {
+                debug.min_stack_pointer = self.current_stack_pointer.get();
+            }
+        });
     }
 
 
