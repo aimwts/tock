@@ -90,13 +90,18 @@ pub trait ProcessType {
 
     fn dequeue_task(&self) -> Option<Task>;
 
+
+    //memop
+
+    fn sbrk(&self, increment: isize) -> Result<*const u8, Error>;
+
+    fn brk(&self, new_break: *const u8) -> Result<*const u8, Error>;
+
     fn mem_start(&self) -> *const u8;
 
     fn mem_end(&self) -> *const u8;
 
     fn flash_start(&self) -> *const u8;
-
-    fn flash_non_protected_start(&self) -> *const u8;
 
     fn flash_end(&self) -> *const u8;
 
@@ -110,13 +115,14 @@ pub trait ProcessType {
 
     fn update_heap_start_pointer(&self, heap_pointer: *const u8);
 
+
+
     fn setup_mpu(&self, mpu: &mpu::MPU);
 
     fn add_mpu_region(&self, base: *const u8, size: u32) -> bool;
 
-    fn sbrk(&self, increment: isize) -> Result<*const u8, Error>;
 
-    fn brk(&self, new_break: *const u8) -> Result<*const u8, Error>;
+    fn flash_non_protected_start(&self) -> *const u8;
 
     fn in_exposed_bounds(&self, buf_start_addr: *const u8, size: usize) -> bool;
 
@@ -139,15 +145,10 @@ pub trait ProcessType {
 
     fn incr_syscall_count(&self, last_syscall: Option<Syscall>);
 
-    fn sp(&self) -> *const usize;
 
-    fn lr(&self) -> usize;
 
-    fn pc(&self) -> usize;
 
-    fn r12(&self) -> usize;
 
-    fn xpsr(&self) -> usize;
 
     /// Return the per-process state that the kernel must store while the
     /// process is not running. This state is passed back to the process when it
@@ -793,29 +794,8 @@ impl<S:SyscallInterface> ProcessType for Process<'a, S> {
         });
     }
 
-    fn sp(&self) -> *const usize {
-        self.current_stack_pointer.get() as *const usize
-    }
 
-    fn lr(&self) -> usize {
-        let pspr = self.current_stack_pointer.get() as *const usize;
-        unsafe { read_volatile(pspr.offset(5)) }
-    }
 
-    fn pc(&self) -> usize {
-        let pspr = self.current_stack_pointer.get() as *const usize;
-        unsafe { read_volatile(pspr.offset(6)) }
-    }
-
-    fn r12(&self) -> usize {
-        let pspr = self.current_stack_pointer.get() as *const usize;
-        unsafe { read_volatile(pspr.offset(4)) }
-    }
-
-    fn xpsr(&self) -> usize {
-        let pspr = self.current_stack_pointer.get() as *const usize;
-        unsafe { read_volatile(pspr.offset(7)) }
-    }
 
     /// Return the per-process state that the kernel must store while the
     /// process is not running. This state is passed back to the process when it
@@ -1032,7 +1012,29 @@ impl<S: 'static + SyscallInterface> Process<'a, S> {
     }
 
 
+    fn sp(&self) -> *const usize {
+        self.current_stack_pointer.get() as *const usize
+    }
 
+    fn lr(&self) -> usize {
+        let pspr = self.current_stack_pointer.get() as *const usize;
+        unsafe { read_volatile(pspr.offset(5)) }
+    }
+
+    fn pc(&self) -> usize {
+        let pspr = self.current_stack_pointer.get() as *const usize;
+        unsafe { read_volatile(pspr.offset(6)) }
+    }
+
+    fn r12(&self) -> usize {
+        let pspr = self.current_stack_pointer.get() as *const usize;
+        unsafe { read_volatile(pspr.offset(4)) }
+    }
+
+    fn xpsr(&self) -> usize {
+        let pspr = self.current_stack_pointer.get() as *const usize;
+        unsafe { read_volatile(pspr.offset(7)) }
+    }
 
 
     /// Reset all `grant_ptr`s to NULL.
