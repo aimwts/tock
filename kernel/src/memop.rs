@@ -1,6 +1,6 @@
 //! Implementation of the MEMOP family of syscalls.
 
-use process::Process;
+use process::ProcessType;
 use returncode::ReturnCode;
 use syscall::SyscallInterface;
 
@@ -37,7 +37,7 @@ use syscall::SyscallInterface;
 ///   where the app has put the start of its heap. This is not strictly
 ///   necessary for correct operation, but allows for better debugging if the
 ///   app crashes.
-crate fn memop<S: SyscallInterface>(process: &mut Process<S>, op_type: usize, r1: usize) -> ReturnCode {
+crate fn memop(process: &ProcessType, op_type: usize, r1: usize) -> ReturnCode {
     match op_type {
         // Op Type 0: BRK
         0 /* BRK */ => {

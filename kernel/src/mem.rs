@@ -49,7 +49,8 @@ impl<L, T> Drop for AppPtr<L, T> {
     fn drop(&mut self) {
         self.kernel
             .process_map_or((), self.process.idx(), |process| unsafe {
-                process.free(self.ptr.as_mut())
+                // process.free(self.ptr.as_mut())
+                process.free(0)
             })
     }
 }

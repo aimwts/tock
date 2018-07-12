@@ -14,7 +14,7 @@ use grant;
 use platform::mpu;
 use returncode::ReturnCode;
 use sched::Kernel;
-use syscall::{Syscall, SyscallInterface};
+use syscall::{self, Syscall, SyscallInterface};
 use tbfheader;
 
 /// This is used in the hardfault handler.
@@ -39,9 +39,10 @@ extern "C" {
 /// selected.
 pub unsafe fn load_processes<S: SyscallInterface>(
     kernel: &'static Kernel,
+    syscall: &'static S,
     start_of_flash: *const u8,
     app_memory: &mut [u8],
-    procs: &mut [Option<&mut Process<'a, S>>],
+    procs: &mut [Option<&Process<'static, S>>],
     fault_response: FaultResponse,
 ) {
     let mut apps_in_flash_ptr = start_of_flash;
@@ -50,6 +51,7 @@ pub unsafe fn load_processes<S: SyscallInterface>(
     for i in 0..procs.len() {
         let (process, flash_offset, memory_offset) = Process::create(
             kernel,
+            syscall,
             apps_in_flash_ptr,
             app_memory_ptr,
             app_memory_size,
@@ -74,7 +76,7 @@ pub unsafe fn load_processes<S: SyscallInterface>(
     }
 }
 
-crate trait ProcessType {
+pub trait ProcessType {
     fn schedule(&self, callback: FunctionCall) -> bool;
     fn schedule_ipc(&self, from: AppId, cb_type: IPCType);
 
@@ -107,7 +109,7 @@ crate trait ProcessType {
 
     fn update_heap_start_pointer(&self, heap_pointer: *const u8);
 
-    fn setup_mpu<MPU: mpu::MPU>(&self, mpu: &MPU);
+    fn setup_mpu(&self, mpu: &mpu::MPU);
 
     fn add_mpu_region(&self, base: *const u8, size: u32) -> bool;
 
@@ -119,11 +121,15 @@ crate trait ProcessType {
 
     unsafe fn alloc(&self, size: usize) -> Option<&mut [u8]>;
 
-    unsafe fn free<T>(&self, _: *mut T);
+    // unsafe fn free<T>(&self, _: *mut T);
+    unsafe fn free(&self, _grant_num: usize);
 
-    unsafe fn grant_for<T>(&self, grant_num: usize) -> *mut T;
+    unsafe fn grant_ptr(&self, grant_num: usize) -> *mut *mut u8;
 
-    unsafe fn grant_for_or_alloc<T: Default>(&self, grant_num: usize) -> Option<*mut T>;
+    unsafe fn grant_for(&self, grant_num: usize) -> *mut u8;
+
+    // unsafe fn grant_for_or_alloc<T: Default>(&self, grant_num: usize, grant_size: usize) -> Option<*mut u8>;
+    // unsafe fn grant_for_or_alloc(&self, grant_num: usize, grant_size: usize) -> Option<*mut u8>;
 
     fn pop_syscall_stack(&self);
 
@@ -145,7 +151,37 @@ crate trait ProcessType {
     /// Return the per-process state that the kernel must store while the
     /// process is not running. This state is passed back to the process when it
     /// starts running.
-    fn stored_state<S: SyscallInterface>(&self) -> &S::StoredState;
+    // fn stored_state<S: SyscallInterface>(&self) -> &<S as SyscallInterface>::StoredState  where Self: Sized;
+    // fn stored_state(&self) -> &SyscallInterface::StoredState  where Self: Sized;
+    // fn stored_state(&self) -> usize;
+
+    fn get_package_name(&self) -> &[u8];
+
+
+
+
+    // functions for processes that are architecture specific
+
+
+    fn get_context_switch_reason(&self) -> syscall::ContextSwitchReason;
+
+    /// Get the syscall that the process called.
+    fn get_syscall_number(&self) -> Option<Syscall>;
+
+    /// Get the four u32 values that the process can pass with the syscall.
+    fn get_syscall_data(&self) -> (usize, usize, usize, usize);
+
+    /// Set the return value the process should see when it begins executing
+    /// again after the syscall.
+    fn set_syscall_return_value(&self, return_value: isize);
+
+    /// Replace the last stack frame with the new function call. This function
+    /// is what should be executed when the process is resumed.
+    fn replace_function_call(&self, callback: FunctionCall);
+
+    /// Context switch to a specific process.
+    fn switch_to_process(&self) -> *mut u8;
+
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -166,7 +202,7 @@ impl From<Error> for ReturnCode {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-crate enum State {
+pub enum State {
     Running,
     Yielded,
     Fault,
@@ -185,7 +221,7 @@ pub enum IPCType {
 }
 
 #[derive(Copy, Clone)]
-crate enum Task {
+pub enum Task {
     FunctionCall(FunctionCall),
     IPC((AppId, IPCType)),
 }
@@ -242,9 +278,11 @@ struct ProcessDebug {
     restart_count: usize,
 }
 
-pub struct Process<'a, S: SyscallInterface> {
+pub struct Process<'a, S: 'static + SyscallInterface> {
     /// Pointer to the main Kernel struct.
     kernel: &'static Kernel,
+
+    syscall: &'static S,
 
     /// Application memory layout:
     ///
@@ -521,12 +559,12 @@ impl<S:SyscallInterface> ProcessType for Process<'a, S> {
         }
     }
 
-    fn setup_mpu<MPU: mpu::MPU>(&self, mpu: &MPU) {
+    fn setup_mpu(&self, mpu: &mpu::MPU) {
         // Flash segment read/execute (no write)
         let flash_start = self.flash.as_ptr() as usize;
         let flash_len = self.flash.len();
 
-        match MPU::create_region(
+        match mpu.create_region(
             0,
             flash_start,
             flash_len,
@@ -543,7 +581,7 @@ impl<S:SyscallInterface> ProcessType for Process<'a, S> {
         let data_start = self.memory.as_ptr() as usize;
         let data_len = self.memory.len();
 
-        match MPU::create_region(
+        match mpu.create_region(
             1,
             data_start,
             data_len,
@@ -571,7 +609,7 @@ impl<S:SyscallInterface> ProcessType for Process<'a, S> {
                 .offset(-(grant_len as isize))
         };
 
-        match MPU::create_region(
+        match mpu.create_region(
             2,
             grant_base as usize,
             grant_len as usize,
@@ -591,7 +629,7 @@ impl<S:SyscallInterface> ProcessType for Process<'a, S> {
                 mpu.set_mpu(mpu::Region::empty(i + 3));
                 continue;
             }
-            match MPU::create_region(
+            match mpu.create_region(
                 i + 3,
                 region.get().0 as usize,
                 region.get().1.as_num::<u32>() as usize,
@@ -661,29 +699,34 @@ impl<S:SyscallInterface> ProcessType for Process<'a, S> {
         }
     }
 
-    unsafe fn free<T>(&self, _: *mut T) {}
+    unsafe fn free(&self, _grant_num: usize) {}
 
-    unsafe fn grant_for<T>(&self, grant_num: usize) -> *mut T {
+    unsafe fn grant_ptr(&self, grant_num: usize) -> *mut *mut u8 {
+        let grant_num = grant_num as isize;
+        (self.mem_end() as *mut *mut u8).offset(-(grant_num + 1))
+    }
+
+    unsafe fn grant_for(&self, grant_num: usize) -> *mut u8 {
         *self.grant_ptr(grant_num)
     }
 
-    unsafe fn grant_for_or_alloc<T: Default>(&self, grant_num: usize) -> Option<*mut T> {
-        let ctr_ptr = self.grant_ptr::<T>(grant_num);
-        if (*ctr_ptr).is_null() {
-            self.alloc(mem::size_of::<T>()).map(|root_arr| {
-                let root_ptr = root_arr.as_mut_ptr() as *mut T;
-                // Initialize the grant contents using ptr::write, to
-                // ensure that we don't try to drop the contents of
-                // uninitialized memory when T implements Drop.
-                write(root_ptr, Default::default());
-                // Record the location in the grant pointer.
-                write_volatile(ctr_ptr, root_ptr);
-                root_ptr
-            })
-        } else {
-            Some(*ctr_ptr)
-        }
-    }
+    // unsafe fn grant_for_or_alloc(&self, grant_num: usize, grant_size: usize) -> Option<*mut u8> {
+    //     let ctr_ptr = self.grant_ptr(grant_num);
+    //     if (*ctr_ptr).is_null() {
+    //         self.alloc(grant_size).map(|root_arr| {
+    //             let root_ptr = root_arr.as_mut_ptr() as *mut u8;
+    //             // Initialize the grant contents using ptr::write, to
+    //             // ensure that we don't try to drop the contents of
+    //             // uninitialized memory when T implements Drop.
+    //     //write(root_ptr, Default::default());
+    //             // Record the location in the grant pointer.
+    //             write_volatile(ctr_ptr, root_ptr);
+    //             root_ptr
+    //         })
+    //     } else {
+    //         Some(*ctr_ptr)
+    //     }
+    // }
 
     fn pop_syscall_stack(&self) {
         let pspr = self.current_stack_pointer.get() as *const usize;
@@ -773,22 +816,54 @@ impl<S:SyscallInterface> ProcessType for Process<'a, S> {
         unsafe { read_volatile(pspr.offset(7)) }
     }
 
-    // /// Return the per-process state that the kernel must store while the
-    // /// process is not running. This state is passed back to the process when it
-    // /// starts running.
-    // fn stored_state(&mut self) -> &S::StoredState {
-    //     &mut self.stored_regs
+    /// Return the per-process state that the kernel must store while the
+    /// process is not running. This state is passed back to the process when it
+    /// starts running.
+    // fn stored_state(&self) -> &S::StoredState {
+    //     &self.stored_regs
     // }
+    // fn stored_state(&self) -> usize {
+    //     0
+    // }
+
+    fn get_package_name(&self) -> &[u8] {
+        self.package_name.as_bytes()
+    }
+
+    fn get_context_switch_reason(&self) -> syscall::ContextSwitchReason {
+        self.syscall.get_context_switch_reason()
+    }
+
+    fn get_syscall_number(&self) -> Option<Syscall> {
+        self.syscall.get_syscall_number(self.sp())
+    }
+
+    fn get_syscall_data(&self) -> (usize, usize, usize, usize) {
+        self.syscall.get_syscall_data(self.sp())
+    }
+
+    fn set_syscall_return_value(&self, return_value: isize) {
+        self.syscall.set_syscall_return_value(self.sp(), return_value);
+    }
+
+    fn replace_function_call(&self, callback: FunctionCall) {
+        self.syscall.replace_function_call(self.sp(), callback);
+    }
+
+    fn switch_to_process(&self) -> *mut u8 {
+        self.syscall.switch_to_process(self.sp(), &self.stored_regs)
+    }
 }
 
-impl<S: SyscallInterface> Process<'a, S> {
+impl<S: 'static + SyscallInterface> Process<'a, S> {
     crate unsafe fn create(
         kernel: &'static Kernel,
+        syscall: &'static S,
         app_flash_address: *const u8,
         remaining_app_memory: *mut u8,
         remaining_app_memory_size: usize,
         fault_response: FaultResponse,
-    ) -> (Option<&'static mut Process<'a, S>>, usize, usize) {
+    ) -> (Option<&'static Process<'a, S>>, usize, usize) {
         if let Some(tbf_header) = tbfheader::parse_and_validate_tbf_header(app_flash_address) {
             let app_flash_size = tbf_header.get_total_size() as usize;
 
@@ -823,7 +898,7 @@ impl<S: SyscallInterface> Process<'a, S> {
             let callbacks_offset = callback_len * callback_size;
 
             // Make room to store this process's metadata.
-            let process_struct_offset = mem::size_of::<Process>();
+            let process_struct_offset = mem::size_of::<Process<S>>();
 
             // Need to make sure that the amount of memory we allocate for
             // this process at least covers this state.
@@ -883,10 +958,11 @@ impl<S: SyscallInterface> Process<'a, S> {
             let mut app_stack_start_pointer = None;
 
             // Create the Process struct in the app grant region.
-            let mut process: &mut Process =
-                &mut *(process_struct_memory_location as *mut Process<'static>);
+            let mut process: &mut Process<S> =
+                &mut *(process_struct_memory_location as *mut Process<'static, S>);
 
             process.kernel = kernel;
+            process.syscall = syscall;
             process.memory = app_memory;
             process.header = tbf_header;
             process.kernel_memory_break = Cell::new(kernel_memory_break);
@@ -956,10 +1032,7 @@ impl<S: SyscallInterface> Process<'a, S> {
 
 
 
-    unsafe fn grant_ptr<T>(&self, grant_num: usize) -> *mut *mut T {
-        let grant_num = grant_num as isize;
-        (self.mem_end() as *mut *mut T).offset(-(grant_num + 1))
-    }
+
 
     /// Reset all `grant_ptr`s to NULL.
     unsafe fn grant_ptrs_reset(&self) {
@@ -1291,13 +1364,20 @@ impl<S: SyscallInterface> Process<'a, S> {
   flash_app_start,
   flash_protected_size,
   flash_start,
-  r0, self.stored_regs.r6,
-  r1, self.stored_regs.r7,
-  r2, self.stored_regs.r8,
-  r3, self.stored_regs.r10,
-  self.stored_regs.r4, self.stored_regs.r11,
-  self.stored_regs.r5, r12,
-  self.stored_regs.r9,
+  // r0, self.stored_regs.r6,
+  // r1, self.stored_regs.r7,
+  // r2, self.stored_regs.r8,
+  // r3, self.stored_regs.r10,
+  // self.stored_regs.r4, self.stored_regs.r11,
+  // self.stored_regs.r5, r12,
+  // self.stored_regs.r9,
+  r0, 6,
+  r1, 7,
+  r2, 8,
+  r3, 10,
+  4, 11,
+  5, r12,
+  9,
   sp,
   lr,
   pc,

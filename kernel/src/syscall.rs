@@ -4,7 +4,7 @@ use process;
 
 /// The syscall number assignments.
 #[derive(Copy, Clone, Debug)]
-crate enum Syscall {
+pub enum Syscall {
     /// Return to the kernel to allow other processes to execute or to wait for
     /// interrupts and callbacks.
     YIELD = 0,
@@ -53,7 +53,7 @@ pub enum ContextSwitchReason {
 pub trait SyscallInterface {
     /// Some architecture-specific struct containing per-process state that must
     /// be kept while the process is not running.
-    type StoredState;
+    type StoredState: Default;
 
     /// Allows the kernel to query to see why the process stopped running. This
     /// function can only be called once to get the last state of the process
@@ -78,5 +78,5 @@ pub trait SyscallInterface {
     fn replace_function_call(&self, stack_pointer: *const usize, callback: process::FunctionCall);
 
     /// Context switch to a specific process.
-    fn switch_to_process(&self, stack_pointer: *const usize, state: &mut Self::StoredState) -> *mut u8;
+    fn switch_to_process(&self, stack_pointer: *const usize, state: &Self::StoredState) -> *mut u8;
 }

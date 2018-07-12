@@ -3,7 +3,7 @@
 use core::marker::PhantomData;
 use core::mem::size_of;
 use core::ops::{Deref, DerefMut};
-use core::ptr::{read_volatile, write_volatile, Unique};
+use core::ptr::{read_volatile, write_volatile, Unique, write};
 
 use callback::AppId;
 use process::Error;
@@ -26,7 +26,7 @@ pub struct AppliedGrant<T> {
 }
 
 impl<T> AppliedGrant<T> {
-    pub fn enter<F, R, S>(self, fun: F) -> R
+    pub fn enter<F, R>(self, fun: F) -> R
     where
         F: FnOnce(&mut Owned<T>, &mut Allocator) -> R,
         R: Copy,
@@ -71,7 +71,8 @@ impl<T: ?Sized> Drop for Owned<T> {
             let app_id = self.app_id;
             let data = self.data.as_ptr() as *mut u8;
             self.kernel.process_map_or((), app_id, |process| {
-                process.free(data);
+                // process.free(data);
+                process.free(0);
             });
         }
     }
@@ -157,7 +158,7 @@ impl<T: Default> Grant<T> {
         unsafe {
             let app_id = appid.idx();
             self.kernel.process_map_or(None, app_id, |process| {
-                let cntr = process.grant_for::<T>(self.grant_num);
+                let cntr = process.grant_for(self.grant_num) as *mut T;
                 if cntr.is_null() {
                     None
                 } else {
@@ -172,7 +173,7 @@ impl<T: Default> Grant<T> {
         }
     }
 
-    pub fn enter<F, R, S>(&self, appid: AppId, fun: F) -> Result<R, Error>
+    pub fn enter<F, R>(&self, appid: AppId, fun: F) -> Result<R, Error>
     where
         F: FnOnce(&mut Borrowed<T>, &mut Allocator) -> R,
         R: Copy,
@@ -181,9 +182,34 @@ impl<T: Default> Grant<T> {
             let app_id = appid.idx();
             self.kernel
                 .process_map_or(Err(Error::NoSuchApp), app_id, |process| {
-                    process.grant_for_or_alloc::<T>(self.grant_num).map_or(
+
+                    let ctr_ptr = process.grant_ptr(self.grant_num) as *mut *mut T;
+
+
+                    // unsafe fn grant_for_or_alloc(&self, grant_num: usize, grant_size: usize) -> Option<*mut u8> {
+                        // let ctr_ptr = self.grant_ptr(grant_num);
+                    let new_grant = if (*ctr_ptr).is_null() {
+                        process.alloc(size_of::<T>()).map(|root_arr| {
+                            let root_ptr = root_arr.as_mut_ptr() as *mut T;
+                            // Initialize the grant contents using ptr::write, to
+                            // ensure that we don't try to drop the contents of
+                            // uninitialized memory when T implements Drop.
+                            write(root_ptr, Default::default());
+                            // Record the location in the grant pointer.
+                            write_volatile(ctr_ptr, root_ptr);
+                            root_ptr
+                        })
+                    } else {
+                        Some(*ctr_ptr)
+                    };
+                    // }
+
+
+                    // process.grant_for_or_alloc(self.grant_num, size_of<T>()).map_or(
+                    new_grant.map_or(
                         Err(Error::OutOfMemory),
                         move |root_ptr| {
+                            let root_ptr = root_ptr as *mut T;
                             let mut root = Borrowed::new(self.kernel, &mut *root_ptr, app_id);
                             let mut allocator = Allocator {
                                 kernel: self.kernel,
@@ -204,7 +230,8 @@ impl<T: Default> Grant<T> {
     {
         self.kernel
             .process_each_enumerate(|app_id, process| unsafe {
-                let root_ptr = process.grant_for::<T>(self.grant_num);
+                // let root_ptr = process.grant_for::<T>(self.grant_num);
+                let root_ptr = process.grant_for(self.grant_num) as *mut T;
                 if !root_ptr.is_null() {
                     let mut root = Owned::new(self.kernel, root_ptr, app_id);
                     fun(&mut root);

@@ -69,7 +69,6 @@ impl Kernel {
             return default;
         }
         self.processes[process_index]
-            .as_ref()
             .map_or(default, |process| closure(process))
     }
 
@@ -81,8 +80,8 @@ impl Kernel {
     {
         for (i, process) in self.processes.iter().enumerate() {
             match process {
-                Some(ref p) => {
-                    closure(i, p);
+                Some(p) => {
+                    closure(i, *p);
                 }
                 None => {}
             }
@@ -99,8 +98,8 @@ impl Kernel {
     {
         for (i, process) in self.processes.iter().enumerate() {
             match process {
-                Some(ref p) => {
-                    let ret = closure(i, p);
+                Some(p) => {
+                    let ret = closure(i, *p);
                     if ret != ReturnCode::FAIL {
                         return ret;
                     }
@@ -128,7 +127,7 @@ impl Kernel {
                 chip.service_pending_interrupts();
 
                 for (i, p) in self.processes.iter().enumerate() {
-                    p.as_ref().map(|process| {
+                    p.map(|process| {
                         self.do_process(
                             platform,
                             chip,
@@ -177,9 +176,9 @@ impl Kernel {
                     process.setup_mpu(chip.mpu());
                     chip.mpu().enable_mpu();
                     systick.enable(true);
-                    process.switch_to();
+                    // process.switch_to();
 
-                    let new_sp = chip.syscall().switch_to_process(process.sp(), process.stored_state());
+                    let new_sp = process.switch_to_process();
 
 
                     systick.enable(false);
@@ -216,7 +215,7 @@ impl Kernel {
             }
 
             // Check why the process stopped running, and handle it correctly.
-            let process_state = chip.syscall().get_context_switch_reason();
+            let process_state = process.get_context_switch_reason();
             match process_state {
                 ContextSwitchReason::Fault => {
                     // Let process deal with it as appropriate.
@@ -249,19 +248,19 @@ impl Kernel {
 
 
             // Get which syscall the process called.
-            let svc_number = chip.syscall().get_syscall_number(process.sp());
+            let svc_number = process.get_syscall_number();
 
             // Process had a system call, count it for debugging purposes.
             process.incr_syscall_count(svc_number);
 
             // Retrieve the four values a process can pass with a syscall. These
             // may not all be used depending on which syscall it is.
-            let (r0, r1, r2, r3) = chip.syscall().get_syscall_data(process.sp());
+            let (r0, r1, r2, r3) = process.get_syscall_data();
 
             match svc_number {
                 Some(Syscall::MEMOP) => {
                     let res = memop::memop(process, r0, r1);
-                    chip.syscall().set_syscall_return_value(process.sp(), res.into());
+                    process.set_syscall_return_value(res.into());
                 }
                 Some(Syscall::YIELD) => {
                     process.yield_state();
@@ -284,14 +283,14 @@ impl Kernel {
                         Some(d) => d.subscribe(subdriver_num, callback, appid),
                         None => ReturnCode::ENODEVICE,
                     });
-                    chip.syscall().set_syscall_return_value(process.sp(), res.into());
+                    process.set_syscall_return_value(res.into());
                 }
                 Some(Syscall::COMMAND) => {
                     let res = platform.with_driver(r0, |driver| match driver {
                         Some(d) => d.command(r1, r2, r3, appid),
                         None => ReturnCode::ENODEVICE,
                     });
-                    chip.syscall().set_syscall_return_value(process.sp(), res.into());
+                    process.set_syscall_return_value(res.into());
                 }
                 Some(Syscall::ALLOW) => {
                     let res = platform.with_driver(r0, |driver| {
@@ -314,7 +313,7 @@ impl Kernel {
                             None => ReturnCode::ENODEVICE,
                         }
                     });
-                    chip.syscall().set_syscall_return_value(process.sp(), res.into());
+                    process.set_syscall_return_value(res.into());
                 }
                 _ => {}
             }
