@@ -30,6 +30,7 @@ pub struct Kernel {
     work: Cell<usize>,
     /// This holds a pointer to the static array of Process pointers.
     processes: &'static [Option<&'static process::ProcessType>],
+    // processes: &'static [Option<&'static Process<'static, S>>],
 }
 
 impl Kernel {

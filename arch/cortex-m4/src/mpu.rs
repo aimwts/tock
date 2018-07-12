@@ -141,7 +141,7 @@ impl kernel::mpu::MPU for MPU {
         regs.control.set(0b0);
     }
 
-    fn create_region(
+    fn create_region(&self,
         region_num: usize,
         start: usize,
         len: usize,

@@ -51,5 +51,5 @@ pub use sched::Kernel;
 // functions and types are used by board files to setup the platform and setup
 // processes.
 pub mod procs {
-    pub use process::{load_processes, FaultResponse, Process, FunctionCall};
+    pub use process::{load_processes, FaultResponse, Process, FunctionCall, ProcessType};
 }

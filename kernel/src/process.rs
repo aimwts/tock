@@ -42,7 +42,8 @@ pub unsafe fn load_processes<S: SyscallInterface>(
     syscall: &'static S,
     start_of_flash: *const u8,
     app_memory: &mut [u8],
-    procs: &mut [Option<&Process<'static, S>>],
+    // procs: &mut [Option<&Process<'static, S>>],
+    procs: &'static [Option<&'static ProcessType>],
     fault_response: FaultResponse,
 ) {
     let mut apps_in_flash_ptr = start_of_flash;
@@ -1046,7 +1047,7 @@ impl<S: 'static + SyscallInterface> Process<'a, S> {
 
 
 
-    crate unsafe fn fault_str<W: Write>(&mut self, writer: &mut W) {
+    crate unsafe fn fault_str<W: Write>(&self, writer: &mut W) {
         let _ccr = SCB_REGISTERS[0];
         let cfsr = SCB_REGISTERS[1];
         let hfsr = SCB_REGISTERS[2];

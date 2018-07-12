@@ -16,13 +16,13 @@ use kernel;
 #[used]
 static mut PROCESS_STATE: usize = 0;
 
-// #[allow(improper_ctypes)]
-// extern "C" {
-//     pub fn switch_to_user(user_stack: *const u8, process_regs: &mut [usize; 8]) -> *mut u8;
-// }
+#[allow(improper_ctypes)]
+extern "C" {
+    pub fn switch_to_user(user_stack: *const u8, process_regs: &[usize; 8]) -> *mut u8;
+}
 
 #[derive(Default)]
-struct StoredRegs {
+pub struct StoredRegs {
     r4: usize,
     r5: usize,
     r6: usize,
@@ -107,14 +107,15 @@ impl kernel::syscall::SyscallInterface for SysCall {
     }
 
     /// Context switch to a specific process.
-    fn switch_to_process(&self, stack_pointer: *const usize, state: &kernel::syscall::ArchStoredValue) -> *mut u8 {
-        &mut stack_pointer
-
+    fn switch_to_process(&self, stack_pointer: *const usize, state: &StoredRegs) -> *mut u8 {
+        // &mut stack_pointer
+unsafe {
         // write_volatile(&mut SYSCALL_FIRED, 0);
         switch_to_user(
-            stack_pointer,
-            &mut *(&mut self.stored_regs as *mut StoredRegs as *mut [usize; 8]),
+            stack_pointer as *const u8,
+            &*(state as *const StoredRegs as *const [usize; 8]),
         )
+    }
         // self.current_stack_pointer = psp;
         // if self.current_stack_pointer < self.debug.min_stack_pointer {
         //     self.debug.min_stack_pointer = self.current_stack_pointer;

@@ -58,7 +58,7 @@ pub unsafe fn panic<L: hil::led::Led, W: Write, S:SyscallInterface>(
     writer: &mut W,
     panic_info: &PanicInfo,
     nop: &Fn(),
-    processes: &'static mut [Option<&'static mut Process<'static, S>>],
+    processes: &'static [Option<&'static Process<'static, S>>],
 ) -> ! {
     panic_begin(nop);
     panic_banner(writer, panic_info);
@@ -106,12 +106,12 @@ pub unsafe fn panic_banner<W: Write>(writer: &mut W, panic_info: &PanicInfo) {
 ///
 /// **NOTE:** The supplied `writer` must be synchronous.
 pub unsafe fn panic_process_info<W: Write, S: SyscallInterface>(
-    procs: &'static mut [Option<&'static mut Process<'static, S>>],
+    procs: &'static [Option<&'static Process<'static, S>>],
     writer: &mut W,
 ) {
     // Print fault status once
     if !procs.is_empty() {
-        procs[0].as_mut().map(|process| {
+        procs[0].as_ref().map(|process| {
             process.fault_str(writer);
         });
     }
@@ -119,7 +119,7 @@ pub unsafe fn panic_process_info<W: Write, S: SyscallInterface>(
     // print data about each process
     let _ = writer.write_fmt(format_args!("\r\n---| App Status |---\r\n"));
     for idx in 0..procs.len() {
-        procs[idx].as_mut().map(|process| {
+        procs[idx].as_ref().map(|process| {
             process.statistics_str(writer);
         });
     }

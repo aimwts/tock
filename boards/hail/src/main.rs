@@ -48,7 +48,7 @@ const FAULT_RESPONSE: kernel::procs::FaultResponse = kernel::procs::FaultRespons
 static mut APP_MEMORY: [u8; 49152] = [0; 49152];
 
 // Actual memory for holding the active process structures.
-static mut PROCESSES: [Option<&'static mut kernel::procs::Process<'static>>; NUM_PROCS] = [
+static mut PROCESSES: [Option<&'static kernel::procs::Process<'static, cortexm4::syscall::SysCall>>; NUM_PROCS] = [
     None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
     None, None, None, None,
 ];
@@ -192,7 +192,7 @@ pub unsafe fn reset_handler() {
 
     set_pin_primary_functions();
 
-    let board_kernel = static_init!(kernel::Kernel, kernel::Kernel::new(&mut PROCESSES));
+    let board_kernel = static_init!(kernel::Kernel, kernel::Kernel::new(&PROCESSES));
 
     // Configure kernel debug gpios as early as possible
     kernel::debug::assign_gpios(
@@ -530,6 +530,7 @@ pub unsafe fn reset_handler() {
 
     kernel::procs::load_processes(
         board_kernel,
+        &cortexm4::syscall::SysCall::new(),
         &_sapps as *const u8,
         &mut APP_MEMORY,
         &mut PROCESSES,
