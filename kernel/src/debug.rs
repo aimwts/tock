@@ -45,7 +45,6 @@ use common::cells::NumericCellExt;
 use common::cells::{MapCell, TakeCell};
 use hil;
 use process::ProcessType;
-use syscall::SyscallInterface;
 
 ///////////////////////////////////////////////////////////////////
 // panic! support routines

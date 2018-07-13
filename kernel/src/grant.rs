@@ -8,7 +8,6 @@ use core::ptr::{read_volatile, write_volatile, Unique, write};
 use callback::AppId;
 use process::Error;
 use sched::Kernel;
-use syscall;
 
 crate static mut CONTAINER_COUNTER: usize = 0;
 
@@ -71,8 +70,7 @@ impl<T: ?Sized> Drop for Owned<T> {
             let app_id = self.app_id;
             let data = self.data.as_ptr() as *mut u8;
             self.kernel.process_map_or((), app_id, |process| {
-                // process.free(data);
-                process.free(0);
+                process.free(data);
             });
         }
     }

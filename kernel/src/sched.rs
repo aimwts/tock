@@ -13,10 +13,9 @@ use memop;
 use platform::mpu::MPU;
 use platform::systick::SysTick;
 use platform::{Chip, Platform};
-use process;
-use process::{Process, Task};
+use process::{self, Task};
 use returncode::ReturnCode;
-use syscall::{Syscall, SyscallInterface, ContextSwitchReason};
+use syscall::{Syscall, ContextSwitchReason};
 
 /// The time a process is permitted to run before being pre-empted
 const KERNEL_TICK_DURATION_US: u32 = 10000;

@@ -2,7 +2,7 @@
 
 use core::cell::Cell;
 use core::fmt::Write;
-use core::ptr::{read_volatile, write, write_volatile};
+use core::ptr::{read_volatile, write_volatile};
 use core::{mem, ptr, slice, str};
 
 use callback::AppId;
@@ -20,11 +20,6 @@ use tbfheader;
 #[no_mangle]
 #[used]
 static mut SCB_REGISTERS: [u32; 5] = [0; 5];
-
-// #[allow(improper_ctypes)]
-// extern "C" {
-//     crate fn switch_to_user(user_stack: *const u8, process_regs: &[usize; 8]) -> *mut u8;
-// }
 
 /// Helper function to load processes from flash into an array of active
 /// processes. This is the default template for loading processes, but a board
@@ -172,7 +167,7 @@ pub trait ProcessType {
     /// Create new memory in the grant region.
     unsafe fn alloc(&self, size: usize) -> Option<&mut [u8]>;
 
-    unsafe fn free(&self, _grant_num: usize);
+    unsafe fn free(&self, _: *mut u8);
 
     /// Get a pointer to the grant pointer for this grant number.
     unsafe fn grant_ptr(&self, grant_num: usize) -> *mut *mut u8;
@@ -351,12 +346,6 @@ pub struct Process<'a, S: 'static + SyscallInterface> {
     /// Saved each time the app switches to the kernel.
     stored_regs: S::StoredState,
 
-    // /// The PC to jump to when switching back to the app.
-    // yield_pc: Cell<usize>,
-
-    // /// Process State Register.
-    // psr: Cell<usize>,
-
     /// Whether the scheduler can schedule this app.
     state: Cell<State>,
 
@@ -381,7 +370,7 @@ pub struct Process<'a, S: 'static + SyscallInterface> {
     tasks: MapCell<RingBuffer<'a, Task>>,
 
     /// Name of the app. Public so that IPC can use it.
-    pub package_name: &'static str,
+    package_name: &'static str,
 
     /// Values kept so that we can print useful debug messages when apps fault.
     debug: MapCell<ProcessDebug>,
@@ -428,13 +417,10 @@ impl<S:SyscallInterface> ProcessType for Process<'a, S> {
         }
     }
 
-    /// Retrieve the current state of this process (i.e. is it running,
-    /// yielded, or in a fault state).
     fn current_state(&self) -> State {
         self.state.get()
     }
 
-    /// Move this process from the running state to the yield state.
     fn yield_state(&self) {
         let current_state = self.state.get();
         if current_state == State::Running {
@@ -714,81 +700,16 @@ impl<S:SyscallInterface> ProcessType for Process<'a, S> {
         }
     }
 
-    unsafe fn free(&self, _grant_num: usize) {}
+    unsafe fn free(&self, _: *mut u8) {}
 
     unsafe fn grant_ptr(&self, grant_num: usize) -> *mut *mut u8 {
         let grant_num = grant_num as isize;
         (self.mem_end() as *mut *mut u8).offset(-(grant_num + 1))
     }
 
-    // unsafe fn grant_for(&self, grant_num: usize) -> *mut u8 {
-    //     *self.grant_ptr(grant_num)
-    // }
-
-    // unsafe fn grant_for_or_alloc(&self, grant_num: usize, grant_size: usize) -> Option<*mut u8> {
-    //     let ctr_ptr = self.grant_ptr(grant_num);
-    //     if (*ctr_ptr).is_null() {
-    //         self.alloc(grant_size).map(|root_arr| {
-    //             let root_ptr = root_arr.as_mut_ptr() as *mut u8;
-    //             // Initialize the grant contents using ptr::write, to
-    //             // ensure that we don't try to drop the contents of
-    //             // uninitialized memory when T implements Drop.
-    //     //write(root_ptr, Default::default());
-    //             // Record the location in the grant pointer.
-    //             write_volatile(ctr_ptr, root_ptr);
-    //             root_ptr
-    //         })
-    //     } else {
-    //         Some(*ctr_ptr)
-    //     }
-    // }
-
-
-
-
-
-    // /// Context switch to the process.
-    // crate unsafe fn switch_to(&self) {
-    //     let psp = switch_to_user(
-    //         self.current_stack_pointer.get(),
-    //         &*(&self.stored_regs as *const StoredRegs as *const [usize; 8]),
-    //     );
-    //     self.current_stack_pointer.set(psp);
-    //     self.debug.map(|debug| {
-    //         if self.current_stack_pointer.get() < debug.min_stack_pointer {
-    //             debug.min_stack_pointer = self.current_stack_pointer.get();
-    //         }
-    //     });
-    // }
-
-    // fn incr_syscall_count(&self, last_syscall: Option<Syscall>) {
-    //     self.debug.map(|debug| {
-    //         debug.syscall_count += 1;
-    //         debug.last_syscall = last_syscall;
-    //     });
-    // }
-
-
-
-
-    /// Return the per-process state that the kernel must store while the
-    /// process is not running. This state is passed back to the process when it
-    /// starts running.
-    // fn stored_state(&self) -> &S::StoredState {
-    //     &self.stored_regs
-    // }
-    // fn stored_state(&self) -> usize {
-    //     0
-    // }
-
     fn get_package_name(&self) -> &[u8] {
         self.package_name.as_bytes()
     }
-
-
-
-
-
 
     fn get_context_switch_reason(&self) -> syscall::ContextSwitchReason {
         self.syscall.get_context_switch_reason()
@@ -814,26 +735,9 @@ impl<S:SyscallInterface> ProcessType for Process<'a, S> {
         self.syscall.set_syscall_return_value(self.sp(), return_value);
     }
 
-    // fn replace_function_call(&self, callback: FunctionCall) {
-    //     self.syscall.replace_function_call(self.sp(), callback);
-    // }
-
     fn pop_syscall_stack(&self) {
         let new_stack_pointer = self.syscall.pop_syscall_stack(self.sp());
-        let pspr = self.current_stack_pointer.get() as *const usize;
         self.current_stack_pointer.set(new_stack_pointer);
-
-        // unsafe {
-        //     self.yield_pc.set(read_volatile(pspr.offset(6)));
-        //     self.psr.set(read_volatile(pspr.offset(7)));
-        //     self.current_stack_pointer
-        //         .set((self.current_stack_pointer.get() as *mut usize).offset(8) as *mut u8);
-        //     // self.debug.map(|debug| {
-        //     //     if self.current_stack_pointer.get() < debug.min_stack_pointer {
-        //     //         debug.min_stack_pointer = self.current_stack_pointer.get();
-        //     //     }
-        //     // });
-        // }
     }
 
     /// Context switch to the process.
@@ -842,24 +746,7 @@ impl<S:SyscallInterface> ProcessType for Process<'a, S> {
 
         self.state.set(State::Running);
 
-
-        // // Fill in initial stack expected by SVC handler
-        // // Top minus 8 u32s for r0-r3, r12, lr, pc and xPSR
-        // let stack_bottom = (self.current_stack_pointer.get() as *mut usize).offset(-8);
-        // write_volatile(stack_bottom.offset(7), self.psr.get());
-        // write_volatile(stack_bottom.offset(6), callback.pc | 1);
-
-        // // Set the LR register to the saved PC so the callback returns to
-        // // wherever wait was called. Set lowest bit to one because of THUMB
-        // // instruction requirements.
-        // write_volatile(stack_bottom.offset(5), self.yield_pc.get() | 0x1);
-        // write_volatile(stack_bottom, callback.r0);
-        // write_volatile(stack_bottom.offset(1), callback.r1);
-        // write_volatile(stack_bottom.offset(2), callback.r2);
-        // write_volatile(stack_bottom.offset(3), callback.r3);
-
         let stack_bottom = self.syscall.push_function_call(self.sp(), callback);
-
         self.current_stack_pointer.set(stack_bottom as *mut u8);
         self.debug_set_max_stack_depth();
     }
@@ -869,14 +756,7 @@ impl<S:SyscallInterface> ProcessType for Process<'a, S> {
 
         self.current_stack_pointer.set(stack_pointer);
         self.debug_set_max_stack_depth();
-        // self.debug.map(|debug| {
-            // if self.current_stack_pointer.get() < debug.min_stack_pointer {
-            //     debug.min_stack_pointer = self.current_stack_pointer.get();
-            // }
-        // });
     }
-
-
 
     unsafe fn fault_str(&self, writer: &mut Write) {
         let _ccr = SCB_REGISTERS[0];
@@ -1119,11 +999,13 @@ impl<S:SyscallInterface> ProcessType for Process<'a, S> {
             // self.r2(),
             // self.r3(),
             5, 6, 7, 8,
-            self.r12(),
+            9,
+            // self.r12(),
             self.sp() as usize,
-            self.lr(),
-            self.pc(),
-            self.xpsr(),
+            10, 11, 12,
+            // self.lr(),
+            // self.pc(),
+            // self.xpsr(),
         );
 
         let _ = writer.write_fmt(format_args!(
@@ -1253,14 +1135,6 @@ impl<S:SyscallInterface> ProcessType for Process<'a, S> {
             "\r\n in the app's folder and open the .lst file.\r\n\r\n"
         ));
     }
-
-
-
-
-
-
-
-
 }
 
 impl<S: 'static + SyscallInterface> Process<'a, S> {
@@ -1383,10 +1257,6 @@ impl<S: 'static + SyscallInterface> Process<'a, S> {
             process.flash = slice::from_raw_parts(app_flash_address, app_flash_size);
 
             process.stored_regs = Default::default();
-            // process.yield_pc = Cell::new(init_fn);
-            // Set the Thumb bit and clear everything else
-            // process.psr = Cell::new(0x01000000);
-
             process.state = Cell::new(State::Yielded);
             process.fault_response = fault_response;
 
@@ -1443,27 +1313,6 @@ impl<S: 'static + SyscallInterface> Process<'a, S> {
         self.current_stack_pointer.get() as *const usize
     }
 
-    fn lr(&self) -> usize {
-        let pspr = self.current_stack_pointer.get() as *const usize;
-        unsafe { read_volatile(pspr.offset(5)) }
-    }
-
-    fn pc(&self) -> usize {
-        let pspr = self.current_stack_pointer.get() as *const usize;
-        unsafe { read_volatile(pspr.offset(6)) }
-    }
-
-    fn r12(&self) -> usize {
-        let pspr = self.current_stack_pointer.get() as *const usize;
-        unsafe { read_volatile(pspr.offset(4)) }
-    }
-
-    fn xpsr(&self) -> usize {
-        let pspr = self.current_stack_pointer.get() as *const usize;
-        unsafe { read_volatile(pspr.offset(7)) }
-    }
-
-
     /// Reset all `grant_ptr`s to NULL.
     unsafe fn grant_ptrs_reset(&self) {
         let grant_ptrs_num = read_volatile(&grant::CONTAINER_COUNTER);
@@ -1481,8 +1330,4 @@ impl<S: 'static + SyscallInterface> Process<'a, S> {
             }
         });
     }
-
-
-
-
 }

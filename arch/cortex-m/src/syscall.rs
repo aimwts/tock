@@ -14,7 +14,7 @@ use kernel;
 #[allow(private_no_mangle_statics)]
 #[no_mangle]
 #[used]
-static mut PROCESS_STATE: usize = 0;
+pub static mut PROCESS_STATE: usize = 0;
 
 #[allow(improper_ctypes)]
 extern "C" {
@@ -23,14 +23,14 @@ extern "C" {
 
 #[derive(Default)]
 pub struct StoredRegs {
-    r4: usize,
-    r5: usize,
-    r6: usize,
-    r7: usize,
-    r8: usize,
-    r9: usize,
-    r10: usize,
-    r11: usize,
+    pub r4: usize,
+    pub r5: usize,
+    pub r6: usize,
+    pub r7: usize,
+    pub r8: usize,
+    pub r9: usize,
+    pub r10: usize,
+    pub r11: usize,
 }
 
 /// Constructor field is private to limit who can create a new one.

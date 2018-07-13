@@ -2,7 +2,6 @@
 
 use process::ProcessType;
 use returncode::ReturnCode;
-use syscall::SyscallInterface;
 
 /// Handle the `memop` syscall.
 ///
