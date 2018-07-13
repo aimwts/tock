@@ -158,7 +158,7 @@ impl<T: Default> Grant<T> {
         unsafe {
             let app_id = appid.idx();
             self.kernel.process_map_or(None, app_id, |process| {
-                let cntr = process.grant_for(self.grant_num) as *mut T;
+                let cntr = *(process.grant_ptr(self.grant_num) as *mut *mut T);
                 if cntr.is_null() {
                     None
                 } else {
@@ -182,12 +182,7 @@ impl<T: Default> Grant<T> {
             let app_id = appid.idx();
             self.kernel
                 .process_map_or(Err(Error::NoSuchApp), app_id, |process| {
-
                     let ctr_ptr = process.grant_ptr(self.grant_num) as *mut *mut T;
-
-
-                    // unsafe fn grant_for_or_alloc(&self, grant_num: usize, grant_size: usize) -> Option<*mut u8> {
-                        // let ctr_ptr = self.grant_ptr(grant_num);
                     let new_grant = if (*ctr_ptr).is_null() {
                         process.alloc(size_of::<T>()).map(|root_arr| {
                             let root_ptr = root_arr.as_mut_ptr() as *mut T;
@@ -202,10 +197,7 @@ impl<T: Default> Grant<T> {
                     } else {
                         Some(*ctr_ptr)
                     };
-                    // }
 
-
-                    // process.grant_for_or_alloc(self.grant_num, size_of<T>()).map_or(
                     new_grant.map_or(
                         Err(Error::OutOfMemory),
                         move |root_ptr| {
@@ -213,7 +205,6 @@ impl<T: Default> Grant<T> {
                             let mut root = Borrowed::new(self.kernel, &mut *root_ptr, app_id);
                             let mut allocator = Allocator {
                                 kernel: self.kernel,
-                                // app: app,
                                 app_id: app_id,
                             };
                             let res = fun(&mut root, &mut allocator);
@@ -230,8 +221,7 @@ impl<T: Default> Grant<T> {
     {
         self.kernel
             .process_each_enumerate(|app_id, process| unsafe {
-                // let root_ptr = process.grant_for::<T>(self.grant_num);
-                let root_ptr = process.grant_for(self.grant_num) as *mut T;
+                let root_ptr = *(process.grant_ptr(self.grant_num) as *mut *mut T);
                 if !root_ptr.is_null() {
                     let mut root = Owned::new(self.kernel, root_ptr, app_id);
                     fun(&mut root);

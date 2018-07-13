@@ -181,7 +181,7 @@ impl Kernel {
                     systick.enable(false);
                     chip.mpu().disable_mpu();
                 }
-                process::State::Yielded => match process.dequeue_task() {
+                process::State::Yielded => match process.unschedule() {
                     None => break,
                     Some(cb) => {
                         match cb {
@@ -247,9 +247,6 @@ impl Kernel {
             // Get which syscall the process called.
             let svc_number = process.get_syscall_number();
 
-            // Process had a system call, count it for debugging purposes.
-            process.incr_syscall_count(svc_number);
-
             // Retrieve the four values a process can pass with a syscall. These
             // may not all be used depending on which syscall it is.
             let (r0, r1, r2, r3) = process.get_syscall_data();
@@ -296,7 +293,7 @@ impl Kernel {
                                 let start_addr = r2 as *mut u8;
                                 if start_addr != ptr::null_mut() {
                                     let size = r3;
-                                    if process.in_exposed_bounds(start_addr, size) {
+                                    if process.in_app_owned_memory(start_addr, size) {
                                         let slice =
                                             AppSlice::new(self, start_addr as *mut u8, size, appid);
                                         d.allow(appid, r1, Some(slice))

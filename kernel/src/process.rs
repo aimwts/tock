@@ -1,13 +1,12 @@
 //! Support for creating and running userspace applications.
 
-use callback::AppId;
-use common::{Queue, RingBuffer};
-
 use core::cell::Cell;
 use core::fmt::Write;
 use core::ptr::{read_volatile, write, write_volatile};
 use core::{mem, ptr, slice, str};
 
+use callback::AppId;
+use common::{Queue, RingBuffer};
 use common::cells::MapCell;
 use common::math;
 use grant;
@@ -22,10 +21,10 @@ use tbfheader;
 #[used]
 static mut SCB_REGISTERS: [u32; 5] = [0; 5];
 
-#[allow(improper_ctypes)]
-extern "C" {
-    crate fn switch_to_user(user_stack: *const u8, process_regs: &[usize; 8]) -> *mut u8;
-}
+// #[allow(improper_ctypes)]
+// extern "C" {
+//     crate fn switch_to_user(user_stack: *const u8, process_regs: &[usize; 8]) -> *mut u8;
+// }
 
 /// Helper function to load processes from flash into an array of active
 /// processes. This is the default template for loading processes, but a board
@@ -42,7 +41,6 @@ pub unsafe fn load_processes<S: SyscallInterface>(
     syscall: &'static S,
     start_of_flash: *const u8,
     app_memory: &mut [u8],
-    // procs: &mut [Option<&Process<'static, S>>],
     procs: &'static mut [Option<&'static ProcessType>],
     fault_response: FaultResponse,
 ) {
@@ -77,97 +75,112 @@ pub unsafe fn load_processes<S: SyscallInterface>(
     }
 }
 
+/// This trait is implemented by process structs.
 pub trait ProcessType {
+    /// Queue a callback for the process. This will be added to a per-process
+    /// buffer and passed to the process by the scheduler.
     fn schedule(&self, callback: FunctionCall) -> bool;
+
+    /// Queue an IPC operation for this process.
     fn schedule_ipc(&self, from: AppId, cb_type: IPCType);
 
+    /// Remove the scheduled operation from the front of the queue.
+    fn unschedule(&self) -> Option<Task>;
+
+    /// Returns the current state of the process. Common states are "running" or
+    /// "yielded".
     fn current_state(&self) -> State;
 
     /// Move this process from the running state to the yield state.
     fn yield_state(&self);
 
+    /// Put this process in the fault state. This will trigger the
+    /// `FaultResponse` for this process to occur.
     unsafe fn fault_state(&self);
 
-    fn dequeue_task(&self) -> Option<Task>;
+    /// Get the name of the process. Used for IPC.
+    fn get_package_name(&self) -> &[u8];
 
 
-    //memop
+    // memop operations
 
-    fn sbrk(&self, increment: isize) -> Result<*const u8, Error>;
-
+    /// Change the location of the program break.
     fn brk(&self, new_break: *const u8) -> Result<*const u8, Error>;
 
+    /// Change the location of the program break and return the previous break
+    /// address.
+    fn sbrk(&self, increment: isize) -> Result<*const u8, Error>;
+
+    /// The start address of allocated RAM for this process.
     fn mem_start(&self) -> *const u8;
 
+    /// The first address after the end of the allocated RAM for this process.
     fn mem_end(&self) -> *const u8;
 
+    /// The start address of the flash region allocated for this process.
     fn flash_start(&self) -> *const u8;
 
+    /// The first address after the end of the flash region allocated for this
+    /// process.
     fn flash_end(&self) -> *const u8;
 
+    /// The lowest address of the grant region for the process.
     fn kernel_memory_break(&self) -> *const u8;
 
+    /// How many writeable flash regions defined in the TBF header for this
+    /// process.
     fn number_writeable_flash_regions(&self) -> usize;
 
+    /// Get the offset from the beginning of flash and the size of the defined
+    /// writeable flash region.
     fn get_writeable_flash_region(&self, region_index: usize) -> (u32, u32);
 
+    /// Debug function to update the kernel on where the stack starts for this
+    /// process. Processes are not required to call this through the memop
+    /// system call, but it aids in debugging the process.
     fn update_stack_start_pointer(&self, stack_pointer: *const u8);
 
+    /// Debug function to update the kernel on where the process heap starts.
+    /// Also optional.
     fn update_heap_start_pointer(&self, heap_pointer: *const u8);
 
 
+    // additional memop like functions
+
+    /// Check if the buffer address and size is contained within the memory
+    /// owned by this process. This isn't quite the same as the memory allocated
+    /// to the process as this does not include the grant region which is owned
+    /// by the kernel.
+    fn in_app_owned_memory(&self, buf_start_addr: *const u8, size: usize) -> bool;
+
+    /// Get the first address of process's flash that isn't protected by the
+    /// kernel. The protected range of flash contains the TBF header and
+    /// potentially other state the kernel is storing on behalf of the process,
+    /// and cannot be edited by the process.
+    fn flash_non_protected_start(&self) -> *const u8;
+
+
+    // mpu
 
     fn setup_mpu(&self, mpu: &mpu::MPU);
 
     fn add_mpu_region(&self, base: *const u8, size: u32) -> bool;
 
 
-    fn flash_non_protected_start(&self) -> *const u8;
-
-    fn in_exposed_bounds(&self, buf_start_addr: *const u8, size: usize) -> bool;
-
-
     // grants
 
+    /// Create new memory in the grant region.
     unsafe fn alloc(&self, size: usize) -> Option<&mut [u8]>;
 
-    // unsafe fn free<T>(&self, _: *mut T);
     unsafe fn free(&self, _grant_num: usize);
 
+    /// Get a pointer to the grant pointer for this grant number.
     unsafe fn grant_ptr(&self, grant_num: usize) -> *mut *mut u8;
-
-    unsafe fn grant_for(&self, grant_num: usize) -> *mut u8;
-
-    // unsafe fn grant_for_or_alloc<T: Default>(&self, grant_num: usize, grant_size: usize) -> Option<*mut u8>;
-    // unsafe fn grant_for_or_alloc(&self, grant_num: usize, grant_size: usize) -> Option<*mut u8>;
-
-    fn pop_syscall_stack(&self);
-
-    /// Context switch to the process.
-    // unsafe fn push_function_call(&self, callback: FunctionCall);
-
-    fn incr_syscall_count(&self, last_syscall: Option<Syscall>);
-
-
-
-
-
-
-    /// Return the per-process state that the kernel must store while the
-    /// process is not running. This state is passed back to the process when it
-    /// starts running.
-    // fn stored_state<S: SyscallInterface>(&self) -> &<S as SyscallInterface>::StoredState  where Self: Sized;
-    // fn stored_state(&self) -> &SyscallInterface::StoredState  where Self: Sized;
-    // fn stored_state(&self) -> usize;
-
-    fn get_package_name(&self) -> &[u8];
-
-
 
 
     // functions for processes that are architecture specific
 
-
+    /// Get why this process stopped running.
     fn get_context_switch_reason(&self) -> syscall::ContextSwitchReason;
 
     /// Get the syscall that the process called.
@@ -180,6 +193,9 @@ pub trait ProcessType {
     /// again after the syscall.
     fn set_syscall_return_value(&self, return_value: isize);
 
+    /// Remove the last stack frame from the process.
+    fn pop_syscall_stack(&self);
+
     /// Replace the last stack frame with the new function call. This function
     /// is what should be executed when the process is resumed.
     fn push_function_call(&self, callback: FunctionCall);
@@ -188,13 +204,8 @@ pub trait ProcessType {
     fn switch_to(&self);
 
 
-
-
-
     unsafe fn fault_str(&self, writer: &mut Write);
-
     unsafe fn statistics_str(&self, writer: &mut Write);
-
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -502,7 +513,7 @@ impl<S:SyscallInterface> ProcessType for Process<'a, S> {
         }
     }
 
-    fn dequeue_task(&self) -> Option<Task> {
+    fn unschedule(&self) -> Option<Task> {
         self.tasks.map_or(None, |tasks| {
             tasks.dequeue().map(|cb| {
                 self.kernel.decrement_work();
@@ -687,7 +698,7 @@ impl<S:SyscallInterface> ProcessType for Process<'a, S> {
         }
     }
 
-    fn in_exposed_bounds(&self, buf_start_addr: *const u8, size: usize) -> bool {
+    fn in_app_owned_memory(&self, buf_start_addr: *const u8, size: usize) -> bool {
         let buf_end_addr = unsafe { buf_start_addr.offset(size as isize) };
 
         buf_start_addr >= self.mem_start() && buf_end_addr <= self.mem_end()
@@ -710,9 +721,9 @@ impl<S:SyscallInterface> ProcessType for Process<'a, S> {
         (self.mem_end() as *mut *mut u8).offset(-(grant_num + 1))
     }
 
-    unsafe fn grant_for(&self, grant_num: usize) -> *mut u8 {
-        *self.grant_ptr(grant_num)
-    }
+    // unsafe fn grant_for(&self, grant_num: usize) -> *mut u8 {
+    //     *self.grant_ptr(grant_num)
+    // }
 
     // unsafe fn grant_for_or_alloc(&self, grant_num: usize, grant_size: usize) -> Option<*mut u8> {
     //     let ctr_ptr = self.grant_ptr(grant_num);
@@ -750,12 +761,12 @@ impl<S:SyscallInterface> ProcessType for Process<'a, S> {
     //     });
     // }
 
-    fn incr_syscall_count(&self, last_syscall: Option<Syscall>) {
-        self.debug.map(|debug| {
-            debug.syscall_count += 1;
-            debug.last_syscall = last_syscall;
-        });
-    }
+    // fn incr_syscall_count(&self, last_syscall: Option<Syscall>) {
+    //     self.debug.map(|debug| {
+    //         debug.syscall_count += 1;
+    //         debug.last_syscall = last_syscall;
+    //     });
+    // }
 
 
 
@@ -784,7 +795,15 @@ impl<S:SyscallInterface> ProcessType for Process<'a, S> {
     }
 
     fn get_syscall_number(&self) -> Option<Syscall> {
-        self.syscall.get_syscall_number(self.sp())
+        let last_syscall = self.syscall.get_syscall_number(self.sp());
+
+        // Record this for debugging purposes.
+        self.debug.map(|debug| {
+            debug.syscall_count += 1;
+            debug.last_syscall = last_syscall;
+        });
+
+        last_syscall
     }
 
     fn get_syscall_data(&self) -> (usize, usize, usize, usize) {
