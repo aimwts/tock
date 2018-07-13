@@ -29,7 +29,6 @@ pub struct Kernel {
     work: Cell<usize>,
     /// This holds a pointer to the static array of Process pointers.
     processes: &'static [Option<&'static process::ProcessType>],
-    // processes: &'static [Option<&'static Process<'static, S>>],
 }
 
 impl Kernel {
@@ -226,22 +225,6 @@ impl Kernel {
                     break;
                 }
             }
-
-            // // Check if the reason this process stopped executing was that it
-            // // called a syscall. If it did, then we can handle that syscall. If
-            // // it didn't then we need to service the other processes.
-            // if !chip.syscall().get_syscall_fired() {
-            //     break;
-            // }
-
-            // // check if the app had a fault
-            // if process.app_fault() {
-            //     // let process deal with it as appropriate
-            //     process.fault_state();
-            //     continue;
-            // }
-
-
 
             // Get which syscall the process called.
             let svc_number = process.get_syscall_number();

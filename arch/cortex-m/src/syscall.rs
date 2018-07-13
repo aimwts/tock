@@ -5,10 +5,6 @@ use core::cell::Cell;
 use core::ptr::{read_volatile, write_volatile};
 
 use kernel;
-// use kernel::common::cells::VolatileCell;
-// use kernel::common::math::PowerOfTwo;
-// use kernel::common::StaticRef;
-
 
 /// This is used in the syscall handler.
 #[allow(private_no_mangle_statics)]
@@ -51,7 +47,6 @@ impl SysCall {
         }
     }
 }
-
 
 impl kernel::syscall::SyscallInterface for SysCall {
     type StoredState = StoredRegs;
@@ -111,21 +106,13 @@ impl kernel::syscall::SyscallInterface for SysCall {
     }
 
     fn pop_syscall_stack(&self, stack_pointer: *const usize) -> *mut u8 {
-
         unsafe {
             self.yield_pc.set(read_volatile(stack_pointer.offset(6)));
             self.psr.set(read_volatile(stack_pointer.offset(7)));
             (stack_pointer as *mut usize).offset(8) as *mut u8
-            // self.debug.map(|debug| {
-            //     if self.current_stack_pointer.get() < debug.min_stack_pointer {
-            //         debug.min_stack_pointer = self.current_stack_pointer.get();
-            //     }
-            // });
         }
     }
 
-    /// Replace the last stack frame with the new function call. This function
-    /// is what should be executed when the process is resumed.
     fn push_function_call(&self, stack_pointer: *const usize, callback: kernel::procs::FunctionCall) -> *mut u8 {
         unsafe {
             // Fill in initial stack expected by SVC handler
@@ -147,19 +134,12 @@ impl kernel::syscall::SyscallInterface for SysCall {
         }
     }
 
-    /// Context switch to a specific process.
     fn switch_to_process(&self, stack_pointer: *const usize, state: &StoredRegs) -> *mut u8 {
-        // &mut stack_pointer
-unsafe {
-        // write_volatile(&mut SYSCALL_FIRED, 0);
-        switch_to_user(
-            stack_pointer as *const u8,
-            &*(state as *const StoredRegs as *const [usize; 8]),
-        )
-    }
-        // self.current_stack_pointer = psp;
-        // if self.current_stack_pointer < self.debug.min_stack_pointer {
-        //     self.debug.min_stack_pointer = self.current_stack_pointer;
-        // }
+        unsafe {
+            switch_to_user(
+                stack_pointer as *const u8,
+                &*(state as *const StoredRegs as *const [usize; 8]),
+            )
+        }
     }
 }

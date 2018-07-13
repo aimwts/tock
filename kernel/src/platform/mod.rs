@@ -1,7 +1,6 @@
 //! Interface for chips and boards.
 
 use driver::Driver;
-use syscall;
 
 pub mod mpu;
 crate mod systick;
@@ -19,13 +18,11 @@ pub trait Platform {
 pub trait Chip {
     type MPU: mpu::MPU;
     type SysTick: systick::SysTick;
-    type SysCall: syscall::SyscallInterface;
 
     fn service_pending_interrupts(&mut self);
     fn has_pending_interrupts(&self) -> bool;
     fn mpu(&self) -> &Self::MPU;
     fn systick(&self) -> &Self::SysTick;
-    fn syscall(&self) -> &Self::SysCall;
     fn sleep(&self);
     unsafe fn atomic<F, R>(&self, f: F) -> R
     where
