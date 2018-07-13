@@ -1,5 +1,7 @@
 //! Tock syscall number definitions and arch-agnostic interface trait.
 
+use core::fmt::Write;
+
 use process;
 
 /// The syscall number assignments.
@@ -73,4 +75,7 @@ pub trait SyscallInterface {
 
     /// Context switch to a specific process.
     fn switch_to_process(&self, stack_pointer: *const usize, state: &Self::StoredState) -> *mut u8;
+
+    fn fault_str(&self, writer: &mut Write);
+    fn print_process_arch_detail(&self, stack_pointer: *const usize, writer: &mut Write);
 }
