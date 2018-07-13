@@ -1,5 +1,7 @@
 //! Tock syscall number definitions and arch-agnostic interface trait.
 
+use core::fmt::Write;
+
 use process;
 
 /// The syscall number assignments.
@@ -105,4 +107,16 @@ pub trait SyscallInterface {
         stack_pointer: *const usize,
         state: &mut Self::StoredState,
     ) -> *mut usize;
+
+    /// Display any general information about the fault.
+    unsafe fn fault_str(&self, writer: &mut Write);
+
+    /// Display architecture specific (e.g. CPU registers or status flags) data
+    /// for a process identified by its stack pointer.
+    unsafe fn print_process_arch_detail(
+        &self,
+        stack_pointer: *const usize,
+        state: &Self::StoredState,
+        writer: &mut Write,
+    );
 }
