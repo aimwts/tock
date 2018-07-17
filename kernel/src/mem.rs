@@ -13,7 +13,9 @@ pub struct Private;
 #[derive(Debug)]
 pub struct Shared;
 
-pub struct AppPtr<L, T> {
+/// Base type for an AppSlice that holds the raw pointer to the memory region
+/// the app shared with the kernel.
+struct AppPtr<L, T> {
     kernel: &'static Kernel,
     ptr: Unique<T>,
     process: AppId,
@@ -54,6 +56,9 @@ impl<L, T> Drop for AppPtr<L, T> {
     }
 }
 
+/// Buffer of memory shared from an app to the kernel.
+///
+/// This is the type created after an app calls the `allow` syscall.
 pub struct AppSlice<L, T> {
     kernel: &'static Kernel,
     ptr: AppPtr<L, T>,
@@ -71,14 +76,19 @@ impl<L, T> AppSlice<L, T> {
         }
     }
 
+    /// Number of bytes in the `AppSlice`.
     pub fn len(&self) -> usize {
         self.len
     }
 
+    /// Get the raw pointer to the buffer. This will be a pointer inside of the
+    /// app's memory region.
     pub fn ptr(&self) -> *const T {
         self.ptr.ptr.as_ptr()
     }
 
+    /// Provide access to one app's AppSlice to another app. This is used for
+    /// IPC.
     crate unsafe fn expose_to(&self, appid: AppId) -> bool {
         if appid.idx() != self.ptr.process.idx() {
             self.kernel.process_map_or(false, appid.idx(), |process| {

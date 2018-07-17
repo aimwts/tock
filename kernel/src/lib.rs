@@ -39,7 +39,7 @@ mod tbfheader;
 pub use callback::{AppId, Callback};
 pub use driver::Driver;
 pub use grant::Grant;
-pub use mem::{AppPtr, AppSlice, Private, Shared};
+pub use mem::{AppSlice, Private, Shared};
 pub use platform::systick::SysTick;
 pub use platform::{mpu, Chip, Platform};
 pub use platform::{ClockInterface, NoClockControl, NO_CLOCK_CONTROL};
