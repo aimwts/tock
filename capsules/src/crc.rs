@@ -326,7 +326,7 @@ impl<C: hil::crc::CRC> hil::crc::Client for Crc<'a, C> {
         self.serving_app.take().map(|appid| {
             self.apps
                 .enter(appid, |app, _| {
-                    if let Some(mut callback) = app.callback {
+                    if let Some(callback) = app.callback {
                         callback.schedule(From::from(ReturnCode::SUCCESS), result as usize, 0);
                     }
                     app.waiting = None;

@@ -172,7 +172,7 @@ impl<A: Alarm> time::Client for AlarmDriver<'a, A> {
                     self.num_armed.set(self.num_armed.get() - 1);
                     alarm
                         .callback
-                        .map(|mut cb| cb.schedule(now as usize, exp as usize, 0));
+                        .map(|cb| cb.schedule(now as usize, exp as usize, 0));
                 }
             }
         });

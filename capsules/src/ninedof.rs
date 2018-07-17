@@ -106,7 +106,7 @@ impl hil::sensors::NineDofClient for NineDof<'a> {
                 app.pending_command = false;
                 finished_command = app.command;
                 finished_command_arg = app.arg1;
-                app.callback.map(|mut cb| {
+                app.callback.map(|cb| {
                     cb.schedule(arg1, arg2, arg3);
                 });
             });
@@ -122,7 +122,7 @@ impl hil::sensors::NineDofClient for NineDof<'a> {
                     // Don't bother re-issuing this command, just use
                     // the existing result.
                     app.pending_command = false;
-                    app.callback.map(|mut cb| {
+                    app.callback.map(|cb| {
                         cb.schedule(arg1, arg2, arg3);
                     });
                     false

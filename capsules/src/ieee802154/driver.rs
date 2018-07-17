@@ -403,7 +403,7 @@ impl RadioDriver<'a> {
             let _ = self.apps.enter(appid, |app, _| {
                 app.tx_callback
                     .take()
-                    .map(|mut cb| cb.schedule(result.into(), 0, 0));
+                    .map(|cb| cb.schedule(result.into(), 0, 0));
             });
         }
     }
@@ -802,7 +802,7 @@ impl device::TxClient for RadioDriver<'a> {
             let _ = self.apps.enter(appid, |app, _| {
                 app.tx_callback
                     .take()
-                    .map(|mut cb| cb.schedule(result.into(), acked as usize, 0));
+                    .map(|cb| cb.schedule(result.into(), acked as usize, 0));
             });
         });
         self.do_next_tx_async();
@@ -843,7 +843,7 @@ impl device::RxClient for RadioDriver<'a> {
                 let src_addr = encode_address(&header.src_addr);
                 app.rx_callback
                     .take()
-                    .map(|mut cb| cb.schedule(pans, dst_addr, src_addr));
+                    .map(|cb| cb.schedule(pans, dst_addr, src_addr));
             });
         });
     }

@@ -207,7 +207,7 @@ impl i2c::I2CClient for TMP006<'a> {
                 temperature.map(|temp_val| {
                     self.callback
                         .take()
-                        .map(|mut cb| cb.schedule(temp_val as usize, get_errno() as usize, 0));
+                        .map(|cb| cb.schedule(temp_val as usize, get_errno() as usize, 0));
                 });
             }
             ProtocolState::SetRegSensorVoltage => {

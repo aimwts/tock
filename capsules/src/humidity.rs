@@ -119,7 +119,7 @@ impl hil::sensors::HumidityClient for HumiditySensor<'a> {
                 if app.subscribed {
                     self.busy.set(false);
                     app.subscribed = false;
-                    app.callback.map(|mut cb| cb.schedule(tmp_val, 0, 0));
+                    app.callback.map(|cb| cb.schedule(tmp_val, 0, 0));
                 }
             });
         }

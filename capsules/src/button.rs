@@ -244,7 +244,7 @@ impl<G: hil::gpio::Pin + hil::gpio::PinCtl> Client for Button<'a, G> {
 
         // schedule callback with the pin number and value
         self.apps.each(|cntr| {
-            cntr.0.map(|mut callback| {
+            cntr.0.map(|callback| {
                 if cntr.1 & (1 << pin_num) != 0 {
                     interrupt_count.set(interrupt_count.get() + 1);
                     callback.schedule(pin_num, button_state as usize, 0);

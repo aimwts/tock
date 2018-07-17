@@ -109,7 +109,7 @@ impl hil::sensors::TemperatureClient for TemperatureSensor<'a> {
                 if app.subscribed {
                     self.busy.set(false);
                     app.subscribed = false;
-                    app.callback.map(|mut cb| cb.schedule(temp_val, 0, 0));
+                    app.callback.map(|cb| cb.schedule(temp_val, 0, 0));
                 }
             });
         }

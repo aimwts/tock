@@ -58,7 +58,7 @@ impl IPC {
                     }
                 };
                 callback
-                    .map(|mut callback| {
+                    .map(|callback| {
                         self.data
                             .enter(otherapp, |otherdata, _| {
                                 if appid.idx() >= otherdata.shared_memory.len() {

@@ -111,7 +111,7 @@ impl hil::sensors::AmbientLightClient for AmbientLight<'a> {
         self.apps.each(|app| {
             if app.pending {
                 app.pending = false;
-                if let Some(mut callback) = app.callback {
+                if let Some(callback) = app.callback {
                     callback.schedule(lux, 0, 0);
                 }
             }
