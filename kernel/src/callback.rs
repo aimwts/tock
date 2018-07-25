@@ -3,13 +3,12 @@
 use core::fmt;
 use core::ptr::NonNull;
 
-use process;
-use sched::Kernel;
+use process::{self, Process};
 
 /// Userspace app identifier.
 #[derive(Clone, Copy)]
 pub struct AppId {
-    crate kernel: &'static Kernel,
+    crate process: &'static Process<'static>,
     idx: usize,
 }
 
@@ -28,9 +27,9 @@ impl fmt::Debug for AppId {
 }
 
 impl AppId {
-    crate fn new(kernel: &'static Kernel, idx: usize) -> AppId {
+    crate fn new(process: &'static Process<'static>, idx: usize) -> AppId {
         AppId {
-            kernel: kernel,
+            process: process,
             idx: idx,
         }
     }
@@ -40,11 +39,9 @@ impl AppId {
     }
 
     pub fn get_editable_flash_range(&self) -> (usize, usize) {
-        self.kernel.process_map_or((0, 0), self.idx, |process| {
-            let start = process.flash_non_protected_start() as usize;
-            let end = process.flash_end() as usize;
-            (start, end)
-        })
+        let start = self.process.flash_non_protected_start() as usize;
+        let end = self.process.flash_end() as usize;
+        (start, end)
     }
 }
 
@@ -66,16 +63,12 @@ impl Callback {
     }
 
     pub fn schedule(&mut self, r0: usize, r1: usize, r2: usize) -> bool {
-        self.app_id
-            .kernel
-            .process_map_or(false, self.app_id.idx(), |process| {
-                process.schedule(process::FunctionCall {
-                    r0: r0,
-                    r1: r1,
-                    r2: r2,
-                    r3: self.appdata,
-                    pc: self.fn_ptr.as_ptr() as usize,
-                })
-            })
+        self.app_id.process.schedule(process::FunctionCall {
+            r0: r0,
+            r1: r1,
+            r2: r2,
+            r3: self.appdata,
+            pc: self.fn_ptr.as_ptr() as usize,
+        })
     }
 }

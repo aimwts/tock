@@ -59,11 +59,7 @@ impl<T: ?Sized> Drop for Owned<T> {
     fn drop(&mut self) {
         unsafe {
             let data = self.data.as_ptr() as *mut u8;
-            self.appid
-                .kernel
-                .process_map_or((), self.appid.idx(), |process| {
-                    process.free(data);
-                });
+            self.appid.process.free(data);
         }
     }
 }
@@ -85,15 +81,12 @@ impl Allocator {
     pub fn alloc<T>(&mut self, data: T) -> Result<Owned<T>, Error> {
         unsafe {
             self.appid
-                .kernel
-                .process_map_or(Err(Error::NoSuchApp), self.appid.idx(), |process| {
-                    process
-                        .alloc(size_of::<T>())
-                        .map_or(Err(Error::OutOfMemory), |arr| {
-                            let mut owned = Owned::new(arr.as_mut_ptr() as *mut T, self.appid);
-                            *owned = data;
-                            Ok(owned)
-                        })
+                .process
+                .alloc(size_of::<T>())
+                .map_or(Err(Error::OutOfMemory), |arr| {
+                    let mut owned = Owned::new(arr.as_mut_ptr() as *mut T, self.appid);
+                    *owned = data;
+                    Ok(owned)
                 })
         }
     }
@@ -141,18 +134,16 @@ impl<T: Default> Grant<T> {
 
     pub fn grant(&self, appid: AppId) -> Option<AppliedGrant<T>> {
         unsafe {
-            appid.kernel.process_map_or(None, appid.idx(), |process| {
-                let cntr = process.grant_for::<T>(self.grant_num);
-                if cntr.is_null() {
-                    None
-                } else {
-                    Some(AppliedGrant {
-                        appid: appid,
-                        grant: cntr,
-                        _phantom: PhantomData,
-                    })
-                }
-            })
+            let cntr = appid.process.grant_for::<T>(self.grant_num);
+            if cntr.is_null() {
+                None
+            } else {
+                Some(AppliedGrant {
+                    appid: appid,
+                    grant: cntr,
+                    _phantom: PhantomData,
+                })
+            }
         }
     }
 
@@ -163,17 +154,13 @@ impl<T: Default> Grant<T> {
     {
         unsafe {
             appid
-                .kernel
-                .process_map_or(Err(Error::NoSuchApp), appid.idx(), |process| {
-                    process.grant_for_or_alloc::<T>(self.grant_num).map_or(
-                        Err(Error::OutOfMemory),
-                        move |root_ptr| {
-                            let mut root = Borrowed::new(&mut *root_ptr, appid);
-                            let mut allocator = Allocator { appid: appid };
-                            let res = fun(&mut root, &mut allocator);
-                            Ok(res)
-                        },
-                    )
+                .process
+                .grant_for_or_alloc::<T>(self.grant_num)
+                .map_or(Err(Error::OutOfMemory), move |root_ptr| {
+                    let mut root = Borrowed::new(&mut *root_ptr, appid);
+                    let mut allocator = Allocator { appid: appid };
+                    let res = fun(&mut root, &mut allocator);
+                    Ok(res)
                 })
         }
     }
@@ -186,7 +173,7 @@ impl<T: Default> Grant<T> {
             .process_each_enumerate(|app_id, process| unsafe {
                 let root_ptr = process.grant_for::<T>(self.grant_num);
                 if !root_ptr.is_null() {
-                    let mut root = Owned::new(root_ptr, AppId::new(self.kernel, app_id));
+                    let mut root = Owned::new(root_ptr, AppId::new(process, app_id));
                     fun(&mut root);
                 }
             });
@@ -214,7 +201,9 @@ impl<T: Default> Iterator for Iter<'a, T> {
         while self.index < self.len {
             let idx = self.index;
             self.index += 1;
-            let res = self.grant.grant(AppId::new(self.grant.kernel, idx));
+            let res = self.grant.kernel.process_map_or(None, idx, |process| {
+                self.grant.grant(AppId::new(process, idx))
+            });
             if res.is_some() {
                 return res;
             }

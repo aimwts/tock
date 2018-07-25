@@ -75,7 +75,7 @@ impl Kernel {
     /// reference to the process.
     crate fn process_map_or<F, R>(&self, default: R, process_index: usize, closure: F) -> R
     where
-        F: FnOnce(&Process) -> R,
+        F: FnOnce(&'static Process) -> R,
     {
         if process_index > self.processes.len() {
             return default;
@@ -89,7 +89,7 @@ impl Kernel {
     /// processes and call the closure on every process that exists.
     crate fn process_each_enumerate<F>(&self, closure: F)
     where
-        F: Fn(usize, &Process),
+        F: Fn(usize, &'static Process),
     {
         for (i, process) in self.processes.iter().enumerate() {
             match process {
@@ -160,7 +160,7 @@ impl Kernel {
 
     /// Main loop.
     pub fn kernel_loop<P: Platform, C: Chip>(
-        &'static self,
+        &self,
         platform: &P,
         chip: &mut C,
         ipc: Option<&ipc::IPC>,
@@ -175,7 +175,7 @@ impl Kernel {
                             platform,
                             chip,
                             process,
-                            callback::AppId::new(self, i),
+                            callback::AppId::new(process, i),
                             ipc,
                         );
                     });
