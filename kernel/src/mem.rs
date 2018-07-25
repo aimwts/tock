@@ -14,7 +14,7 @@ pub struct Shared;
 
 pub struct AppPtr<L, T> {
     ptr: Unique<T>,
-    process: AppId,
+    appid: AppId,
     _phantom: PhantomData<L>,
 }
 
@@ -22,7 +22,7 @@ impl<L, T> AppPtr<L, T> {
     unsafe fn new(ptr: *mut T, appid: AppId) -> AppPtr<L, T> {
         AppPtr {
             ptr: Unique::new_unchecked(ptr),
-            process: appid,
+            appid: appid,
             _phantom: PhantomData,
         }
     }
@@ -44,11 +44,7 @@ impl<L, T> DerefMut for AppPtr<L, T> {
 
 impl<L, T> Drop for AppPtr<L, T> {
     fn drop(&mut self) {
-        self.process
-            .kernel
-            .process_map_or((), self.process.idx(), |process| unsafe {
-                process.free(self.ptr.as_mut())
-            })
+        unsafe { self.appid.process.free(self.ptr.as_mut()) }
     }
 }
 
@@ -76,13 +72,11 @@ impl<L, T> AppSlice<L, T> {
     }
 
     crate unsafe fn expose_to(&self, appid: AppId) -> bool {
-        if appid.idx() != self.ptr.process.idx() {
+        if appid != self.ptr.appid {
             self.ptr
+                .appid
                 .process
-                .kernel
-                .process_map_or(false, appid.idx(), |process| {
-                    process.add_mpu_region(self.ptr() as *const u8, self.len() as u32)
-                })
+                .add_mpu_region(self.ptr() as *const u8, self.len() as u32)
         } else {
             false
         }
